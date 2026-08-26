@@ -1,0 +1,546 @@
+# rvn Tool Contract
+
+Status: God-Tier Wave 0–8 additive contract snapshot for `v4.0.0`.
+
+This is the compatibility contract for the current MCP surface. The runtime
+advertises the JSON Schema for every input through `tools/list`; the TypeScript
+Zod schemas in `packages/mcp-server/src/tools/` are the implementation source
+of truth. The existing human-oriented catalog remains useful for field details,
+while this document records the primitive/core contract, preserves the earlier
+compatibility baseline, and records policy class, annotations, and schema source.
+The full configurable v4 registry contains 218 tools; the default runtime advertises 212 because the six `codex_*` delegation tools are opt-in. The additive v4 entries are defined
+in `packages/mcp-server/src/upgrade-catalog.ts` and the exact runtime order is
+verified by `packages/mcp-server/src/tool-registry.test.ts`.
+
+<!-- BEGIN GENERATED TOOL REGISTRY -->
+## Generated live ToolRegistry index
+
+This block is generated from the built `ToolRegistry`. Current count: **218 tools**.
+Run `pnpm docs:tools` after intentionally changing the registry; CI runs `pnpm docs:tools:check` and fails on drift.
+
+| # | Tool | Permission | Read-only | Destructive |
+| ---: | --- | --- | :---: | :---: |
+| 1 | `workspace_list` | DANGEROUS | no | no |
+| 2 | `workspace_register` | WRITE | no | no |
+| 3 | `workspace_info` | READ | yes | no |
+| 4 | `workspace_tree` | READ | yes | no |
+| 5 | `project_snapshot` | READ | yes | no |
+| 6 | `read_file` | READ | yes | no |
+| 7 | `read_files` | READ | yes | no |
+| 8 | `search_files` | READ | yes | no |
+| 9 | `search_text` | READ | yes | no |
+| 10 | `git_status` | READ | yes | no |
+| 11 | `git_diff` | READ | yes | no |
+| 12 | `git_log` | READ | yes | no |
+| 13 | `git` | EXECUTE | no | yes |
+| 14 | `write_file` | WRITE | no | no |
+| 15 | `apply_patch` | WRITE | no | no |
+| 16 | `edit_file` | WRITE | no | no |
+| 17 | `move_file` | WRITE | no | no |
+| 18 | `copy_file` | WRITE | no | no |
+| 19 | `delete_file` | DANGEROUS | no | yes |
+| 20 | `list_recovery_items` | READ | yes | no |
+| 21 | `restore_deleted_file` | WRITE | no | no |
+| 22 | `list_checkpoints` | READ | yes | no |
+| 23 | `restore_checkpoint` | WRITE | no | yes |
+| 24 | `process_start` | EXECUTE | no | no |
+| 25 | `process_list` | READ | yes | no |
+| 26 | `process_status` | READ | yes | no |
+| 27 | `process_logs` | READ | yes | no |
+| 28 | `process_stop` | EXECUTE | no | no |
+| 29 | `project_dev` | EXECUTE | no | no |
+| 30 | `project_test` | EXECUTE | no | no |
+| 31 | `project_lint` | EXECUTE | no | no |
+| 32 | `project_typecheck` | EXECUTE | no | no |
+| 33 | `project_build` | EXECUTE | no | no |
+| 34 | `codex_status` | READ | yes | no |
+| 35 | `codex_run` | EXECUTE | no | no |
+| 36 | `codex_task_list` | READ | yes | no |
+| 37 | `codex_task_status` | READ | yes | no |
+| 38 | `codex_task_logs` | READ | yes | no |
+| 39 | `codex_stop` | EXECUTE | no | no |
+| 40 | `shell` | EXECUTE | no | yes |
+| 41 | `dom_cdp` | DANGEROUS | no | yes |
+| 42 | `accessibility` | DANGEROUS | no | yes |
+| 43 | `input_event` | DANGEROUS | no | yes |
+| 44 | `vision` | READ | yes | no |
+| 45 | `vision_annotated_capture` | READ | yes | no |
+| 46 | `ui_target_action` | DANGEROUS | no | yes |
+| 47 | `window` | DANGEROUS | no | yes |
+| 48 | `health` | READ | yes | no |
+| 49 | `system_info` | READ | yes | no |
+| 50 | `notification` | EXECUTE | no | no |
+| 51 | `file_dialog` | EXECUTE | yes | no |
+| 52 | `clipboard` | DANGEROUS | no | no |
+| 53 | `web_fetch` | DANGEROUS | yes | no |
+| 54 | `audio` | DANGEROUS | no | no |
+| 55 | `screen_record` | DANGEROUS | no | no |
+| 56 | `office` | DANGEROUS | no | no |
+| 57 | `scheduler` | DANGEROUS | no | yes |
+| 58 | `wsl_exec` | EXECUTE | no | yes |
+| 59 | `wsl_fs` | READ | yes | no |
+| 60 | `skills_list` | DANGEROUS | no | yes |
+| 61 | `skills_read` | DANGEROUS | no | yes |
+| 62 | `mcp_list` | READ | yes | no |
+| 63 | `mcp_describe` | READ | yes | no |
+| 64 | `mcp_call` | DANGEROUS | no | yes |
+| 65 | `workspace_context` | READ | yes | no |
+| 66 | `workspace_context_continue` | READ | yes | no |
+| 67 | `workspace_full_scan` | READ | yes | no |
+| 68 | `workspace_full_scan_continue` | READ | yes | no |
+| 69 | `workspace_snapshot` | READ | yes | no |
+| 70 | `search_all` | READ | yes | no |
+| 71 | `read_many_files` | READ | yes | no |
+| 72 | `read_file_page` | READ | yes | no |
+| 73 | `read_file_page_continue` | READ | yes | no |
+| 74 | `workspace_index` | READ | yes | no |
+| 75 | `workspace_index_status` | READ | yes | no |
+| 76 | `workspace_index_watch` | READ | yes | no |
+| 77 | `workspace_index_stop` | READ | yes | no |
+| 78 | `session_handoff` | READ | yes | no |
+| 79 | `verify_incremental` | EXECUTE | no | no |
+| 80 | `symbol_search` | READ | yes | no |
+| 81 | `find_definition` | READ | yes | no |
+| 82 | `find_references` | READ | yes | no |
+| 83 | `find_implementations` | READ | yes | no |
+| 84 | `call_hierarchy` | READ | yes | no |
+| 85 | `import_graph` | READ | yes | no |
+| 86 | `dependency_graph` | READ | yes | no |
+| 87 | `module_graph` | READ | yes | no |
+| 88 | `type_search` | READ | yes | no |
+| 89 | `trace_symbol` | READ | yes | no |
+| 90 | `context_ranking` | READ | yes | no |
+| 91 | `debug_context` | READ | yes | no |
+| 92 | `review_context` | READ | yes | no |
+| 93 | `change_context` | READ | yes | no |
+| 94 | `symbol_context` | READ | yes | no |
+| 95 | `test_context` | READ | yes | no |
+| 96 | `dependency_context` | READ | yes | no |
+| 97 | `git_context` | READ | yes | no |
+| 98 | `frontend_context` | READ | yes | no |
+| 99 | `backend_context` | READ | yes | no |
+| 100 | `route_intent` | READ | yes | no |
+| 101 | `recipe_list` | READ | yes | no |
+| 102 | `recipe_describe` | READ | yes | no |
+| 103 | `recipe_run` | EXECUTE | no | no |
+| 104 | `dry_run` | READ | yes | no |
+| 105 | `review_changes` | READ | yes | no |
+| 106 | `changed_symbols` | READ | yes | no |
+| 107 | `affected_modules` | READ | yes | no |
+| 108 | `git_history_context` | READ | yes | no |
+| 109 | `git_blame_context` | READ | yes | no |
+| 110 | `discover_tests` | READ | yes | no |
+| 111 | `run_affected_tests` | EXECUTE | no | no |
+| 112 | `test_failures` | READ | yes | no |
+| 113 | `coverage_context` | READ | yes | no |
+| 114 | `test_history` | READ | yes | no |
+| 115 | `cache_stats` | READ | yes | no |
+| 116 | `cache_clear` | WRITE | no | no |
+| 117 | `cache_invalidate` | WRITE | no | no |
+| 118 | `hook_list` | READ | yes | no |
+| 119 | `hook_register` | WRITE | no | no |
+| 120 | `hook_remove` | WRITE | no | no |
+| 121 | `skill_match` | READ | yes | no |
+| 122 | `skill_load` | READ | yes | no |
+| 123 | `plugin_install` | DANGEROUS | no | yes |
+| 124 | `plugin_list` | READ | yes | no |
+| 125 | `plugin_enable` | WRITE | no | no |
+| 126 | `plugin_disable` | WRITE | no | no |
+| 127 | `plugin_remove` | DANGEROUS | no | yes |
+| 128 | `session_context` | READ | yes | no |
+| 129 | `session_checkpoint` | WRITE | no | no |
+| 130 | `session_resume` | READ | yes | no |
+| 131 | `session_history` | READ | yes | no |
+| 132 | `response_mode` | READ | yes | no |
+| 133 | `inspect_web_app` | READ | yes | no |
+| 134 | `debug_ui` | READ | yes | no |
+| 135 | `capture_ui_state` | READ | yes | no |
+| 136 | `form_context` | READ | yes | no |
+| 137 | `network_context` | READ | yes | no |
+| 138 | `console_context` | READ | yes | no |
+| 139 | `browser_debug_context` | READ | yes | no |
+| 140 | `windows_environment` | READ | yes | no |
+| 141 | `service_context` | READ | yes | no |
+| 142 | `process_context` | READ | yes | no |
+| 143 | `port_context` | READ | yes | no |
+| 144 | `registry_context` | READ | yes | no |
+| 145 | `event_log_context` | READ | yes | no |
+| 146 | `installed_runtime_context` | READ | yes | no |
+| 147 | `path_context` | READ | yes | no |
+| 148 | `startup_context` | READ | yes | no |
+| 149 | `mcp_discover` | READ | yes | no |
+| 150 | `mcp_health` | READ | yes | no |
+| 151 | `mcp_resources` | READ | yes | no |
+| 152 | `task_create` | EXECUTE | no | no |
+| 153 | `task_status` | READ | yes | no |
+| 154 | `task_cancel` | EXECUTE | no | no |
+| 155 | `task_result` | READ | yes | no |
+| 156 | `task_list` | READ | yes | no |
+| 157 | `delegate` | EXECUTE | no | no |
+| 158 | `delegate_status` | READ | yes | no |
+| 159 | `delegate_cancel` | EXECUTE | no | no |
+| 160 | `delegate_result` | READ | yes | no |
+| 161 | `parallel_delegate` | EXECUTE | no | no |
+| 162 | `permission_check` | READ | yes | no |
+| 163 | `permission_profile` | READ | yes | no |
+| 164 | `live_logs_query` | READ | yes | no |
+| 165 | `live_logs_status` | READ | yes | no |
+| 166 | `telemetry_dashboard` | READ | yes | no |
+| 167 | `context_economy_stats` | READ | yes | no |
+| 168 | `execution_plan` | READ | yes | no |
+| 169 | `repo_map` | READ | yes | no |
+| 170 | `context_expand` | READ | yes | no |
+| 171 | `recovery_status` | READ | yes | no |
+| 172 | `tool_schema_list` | READ | yes | no |
+| 173 | `tool_schema_register` | WRITE | no | no |
+| 174 | `capabilities` | READ | yes | no |
+| 175 | `tool_search` | READ | yes | no |
+| 176 | `tool_dynamic_filter` | READ | yes | no |
+| 177 | `tool_describe` | READ | yes | no |
+| 178 | `tool_categories` | READ | yes | no |
+| 179 | `tool_function_find` | READ | yes | no |
+| 180 | `tool_aliases` | READ | yes | no |
+| 181 | `mcp_hub` | READ | yes | no |
+| 182 | `dev_context` | READ | yes | no |
+| 183 | `recipe_catalog` | READ | yes | no |
+| 184 | `capture_screenshot` | READ | yes | no |
+| 185 | `compare_screenshot` | READ | yes | no |
+| 186 | `dom_snapshot` | READ | yes | no |
+| 187 | `layout_metadata` | READ | yes | no |
+| 188 | `visual_context` | READ | yes | no |
+| 189 | `inspect_workbook` | READ | yes | no |
+| 190 | `compare_workbook_layout` | READ | yes | no |
+| 191 | `render_excel_preview` | READ | yes | no |
+| 192 | `inspect_pdf` | READ | yes | no |
+| 193 | `compare_pdf_pages` | READ | yes | no |
+| 194 | `project_profile_get` | READ | yes | no |
+| 195 | `project_profile_set` | WRITE | no | no |
+| 196 | `handoff_context` | READ | yes | no |
+| 197 | `benchmark_run` | EXECUTE | no | no |
+| 198 | `regression_report` | READ | yes | no |
+| 199 | `sandbox_exec` | EXECUTE | no | no |
+| 200 | `event_watch` | EXECUTE | no | no |
+| 201 | `crash_trace` | READ | yes | no |
+| 202 | `lsp_diagnostics` | READ | yes | no |
+| 203 | `lsp_rename` | WRITE | no | no |
+| 204 | `debug_attach` | EXECUTE | no | no |
+| 205 | `debug_step` | EXECUTE | no | no |
+| 206 | `git_worktree_spawn` | DANGEROUS | no | yes |
+| 207 | `git_worktree_remove` | DANGEROUS | no | yes |
+| 208 | `db_inspect` | READ | yes | no |
+| 209 | `db_query` | DANGEROUS | no | yes |
+| 210 | `office_ppt` | DANGEROUS | no | yes |
+| 211 | `office_outlook` | READ | yes | no |
+| 212 | `pdf_extract_tables` | READ | yes | no |
+| 213 | `docx_merge` | WRITE | no | no |
+| 214 | `self_heal_plan` | READ | yes | no |
+| 215 | `self_heal_apply` | DANGEROUS | no | yes |
+| 216 | `skills_import` | WRITE | no | no |
+| 217 | `agent_swarm_run` | EXECUTE | no | no |
+| 218 | `tool_batch` | DANGEROUS | no | yes |
+<!-- END GENERATED TOOL REGISTRY -->
+
+## Protocol and result rules
+
+- Tool names and registry order are deterministic.
+- Every request is schema-validated before the application service runs.
+- Every result is structured JSON-compatible MCP content; errors use the
+  repository error/result mapping and do not expose secrets or raw stack traces.
+- `readOnlyHint` is advisory metadata for clients. It never grants permission.
+- `destructiveHint` is advisory metadata for clients. Permission policy and hard
+  blocks remain authoritative.
+- A bounded result must report truncation, continuation, or a bounded-window
+  contract. A new compound tool cannot hide data that a primitive tool can read.
+- `workspaceId` is required where the operation is workspace-scoped unless an
+  explicitly normalized absolute path is accepted by that tool's schema.
+
+## Permission classes
+
+| Class | Meaning | Existing profile behavior |
+| --- | --- | --- |
+| `READ` | No intentional mutation; inspection or local diagnostics | allowed by Safe/Balanced/Full |
+| `WRITE` | Changes workspace files or registration state | prompts in Safe; allowed in Balanced/Full |
+| `EXECUTE` | Starts/controls an owned command, process, project, or Codex task | prompts in Safe; allowed in Balanced/Full |
+| `DANGEROUS` | Destructive, interactive, external, or full-access meta capability | denied in Safe; prompts in Balanced; allowed in Full subject to hard blocks |
+
+Desktop uses its configured local permission profile. Packaged stdio keeps `full` as the backward-compatible default but accepts `safe|balanced|full|custom` through the launcher, environment, or Desktop STDIO policy settings. Optional strict-root mode suppresses automatic whole-drive registration and exposes only explicit canonical allowed roots. These controls do not disable ownership checks, realpath/reparse-point guards, Active Project mutation scope, independent host exact-action approval, or hard blocks, and strict roots are not an OS sandbox.
+
+Mutations still require typed policy classification and explicit chat confirmation when required. The only configurable auto-approval exception is the exact `delete_file` operation when **AI File Delete Policy** is enabled and the target is a proven recoverable item inside the host Active Project. Every other approval-required mutation needs independent trusted host exact-action approval; providerless standalone/headless runtimes fail closed before dispatch. Arbitrary commands and project-owned scripts are opaque execution, not an OS sandbox, and are not automatically recoverable through Recovery Trash.
+
+## Core primitive runtime catalog
+
+The generated live `ToolRegistry` index above is the authoritative runtime catalog for all **218 configurable tools**. It is generated from the built registry and checked in CI. This section intentionally does not maintain a second hand-numbered primitive table, because duplicate permission/schema tables can drift from `tools/list`. The Zod schemas in `packages/mcp-server/src/tools/` and the generated table above remain the source of truth for names, permissions, annotations, ordering, and input JSON Schema.
+
+## Schema groups and contract examples
+
+The following examples make the required shape explicit without duplicating the
+generated JSON Schema. Optional fields and bounds must remain aligned with the
+source schema and the runtime `tools/list` response.
+
+### Workspace and filesystem
+
+```ts
+workspace_list: {}
+workspace_register: {
+  parentWorkspaceId: string;
+  path: string;
+  displayName?: string;
+}
+workspace_info: { workspaceId: string }
+workspace_tree: {
+  workspaceId?: string;
+  path?: string;
+  maxDepth?: number;
+  maxEntries?: number;
+}
+project_snapshot: { workspaceId: string }
+read_file: {
+  workspaceId?: string;
+  path: string;
+  startLine?: number;
+  endLine?: number;
+}
+read_files: { workspaceId?: string; files: Array<{ path: string; startLine?: number; endLine?: number }> }
+search_files: { workspaceId?: string; path?: string; glob?: string; maxResults?: number; includeIgnored?: boolean }
+search_text: {
+  workspaceId?: string;
+  path?: string;
+  query: string;
+  glob?: string;
+  maxResults?: number;
+  includeIgnored?: boolean;
+}
+```
+
+`write_file`, `apply_patch`, `edit_file`, `move_file`, `copy_file`, `delete_file`,
+`restore_deleted_file`, and `restore_checkpoint` retain their checkpoint/recovery,
+same-workspace, secret-policy, confirmation, host-approval, and canonical
+path-guard contracts. They must not acquire implicit recursive or arbitrary-root
+mutation behavior.
+
+### Git, process, project, and Codex
+
+```ts
+git_status: { workspaceId: string }
+git_diff: { workspaceId: string; path?: string; staged?: boolean; maxBytes?: number }
+git_log: { workspaceId: string; maxCommits?: number; maxBytes?: number }
+git: { workspaceId?: string; cwd?: string; args: string[]; timeoutSeconds?: number }
+process_start: { workspaceId: string; executable: string; args: string[]; cwd?: string; timeoutMs?: number }
+process_list: { workspaceId: string }
+process_status: { workspaceId: string; processId: string }
+process_logs: { workspaceId: string; processId: string; tailLines?: number; sinceSequence?: number }
+process_stop: { workspaceId: string; processId: string }
+project_dev: { workspaceId: string }
+project_test: { workspaceId: string }
+project_lint: { workspaceId: string }
+project_typecheck: { workspaceId: string }
+project_build: { workspaceId: string }
+codex_status: {}
+codex_run: { workspaceId: string; instruction: string }
+codex_task_list: { workspaceId: string }
+codex_task_status: { workspaceId: string; codexTaskId: string }
+codex_task_logs: { workspaceId: string; codexTaskId: string; tailLines?: number; sinceSequence?: number }
+codex_stop: { workspaceId: string; codexTaskId: string }
+```
+
+Project tools take the workspace scope and use the detected project profile;
+they do not accept arbitrary shell command strings. The gateway previews exact
+executable/argv for approval and re-resolves immediately before spawn so a
+changed command requires fresh approval.
+
+### Local capability and extension tools
+
+The detailed action enums and bounds are defined in `schemas.ts` and the
+capability backends. Important invariants are:
+
+- `shell` receives an executable plus an argument array, never a composed shell
+  string, and retains foreground/background, timeout, dry-run, and task actions;
+- `dom_cdp`, `accessibility`, `input_event`, `window`, `audio`, `office`, and
+  scheduler operations retain their existing interactive/destructive policy;
+- `vision`, `health`, and `system_info` remain truthful read-only diagnostics;
+- `web_fetch` remains HTTP(S)-only and bounded by explicit byte/timeout fields;
+- `skills_*` and `mcp_*` remain bridge tools and do not silently flatten
+  child-server tools into the 218-tool configurable catalog; `mcp_list` and
+  `mcp_describe` are read-only inspection while `mcp_call` is opaque mutation.
+
+The additive Windows gateway contract is:
+
+```ts
+wsl_exec: {
+  workspaceId: string;
+  distro?: string;
+  executable?: string;
+  arguments?: string[];
+  cwd?: string;                 // registered absolute Windows path
+  environment?: Record<string, string>;
+  operation?: 'run' | 'status' | 'wait' | 'logs' | 'result' | 'cancel';
+  execution?: 'foreground' | 'background' | 'auto';
+  task_id?: string;
+}
+wsl_fs: {
+  workspaceId?: string;
+  operation?: 'status' | 'translate' | 'metadata';
+  direction?: 'windows_to_wsl' | 'wsl_to_windows';
+  distro?: string;
+  path?: string;
+}
+vision_annotated_capture: {
+  workspaceId: string;
+  capture?: 'display' | 'region' | 'window';
+  max_depth?: number;
+  max_marks?: number;
+  ttl_seconds?: number;
+}
+ui_target_action: {
+  workspaceId: string;
+  observationId: string;
+  markId: string;
+  observationHash?: string;
+  action?: 'click' | 'focus' | 'read_value' | 'set_value' | 'select_item' | 'menu_select';
+  value?: string;
+  userConfirmed?: boolean;
+}
+```
+
+`wsl_exec` is argv-only and delegates task lifecycle to the existing bounded
+shell runner. It records workspace ownership, rejects shell-string flags, and
+does not expose arbitrary host paths. `wsl_fs` only translates paths or reads
+metadata; it never opens raw `\\wsl$`/`\\wsl.localhost` files. A WSL status
+failure is returned as `available: false`, not as a successful empty task.
+
+SoM observations return `observationId`, `observationHash`, annotated PNG data,
+`marks[]`, and `expiresAt`. `ui_target_action` checks owner, TTL, optional hash,
+mark identity, and a fresh Accessibility lookup before forwarding an action.
+Coordinates are screen-pixel metadata; action execution uses semantic element
+identifiers so DPI and multi-monitor offsets do not become authorization.
+
+`vision` keeps its existing public OCR action. WinRT OCR is routed to the
+separate packaged-helper boundary and returns a truthful unavailable result when
+package identity, a supported profile language, or the helper is absent. The
+NSIS application remains the primary installer; sparse-package registration is
+an optional release step.
+
+The router adds `tool_dynamic_filter` and extends `tool_search`/`route_intent`
+with ranked candidates, deterministic scores, reason codes, selected model,
+permission metadata, and `authorizationUnchanged: true`. Local rerank is
+opt-in; when no local model is configured it falls back to deterministic scoring
+without sending prompt or file data off-machine.
+
+### Context aggregation
+
+```ts
+workspace_context: {
+  query: string;
+  workspaceId?: string;
+  path?: string;
+  intent?: 'auto' | 'debug' | 'implement' | 'review' | 'trace' | 'explore';
+  mode?: 'optimized' | 'full' | 'exhaustive';
+  includeIgnored?: boolean;
+  responseTargetBytes?: number;
+  pageSize?: number;
+}
+workspace_context_continue: { continuationToken: string; pageSize?: number }
+workspace_full_scan: { workspaceId?: string; path?: string; glob?: string; pageSize?: number; includeIgnored?: boolean }
+workspace_full_scan_continue: { continuationToken: string; pageSize?: number }
+workspace_snapshot: { workspaceId: string }
+search_all: { query: string; workspaceId?: string; path?: string; glob?: string; maxResults?: number; includeIgnored?: boolean }
+read_many_files: { workspaceId?: string; files: Array<{ path: string; startLine?: number; endLine?: number }> }
+```
+
+Context pages are transport windows, not capability limits. The engine keeps
+continuation state and preserves the full primitive search/read tools.
+
+`includeIgnored` is an explicit discovery override. Automatic mode is a quota
+optimization, not authorization. `context_economy_stats` reports raw versus
+delivered context bytes, skipped generated/binary paths, duplicate/previously
+seen bytes avoided, ledger hits, and the bounded ledger size. The ledger is
+in-memory and does not persist file contents or credentials.
+
+### Lossless file paging
+
+```ts
+read_file_page: {
+  workspaceId?: string;
+  path: string;
+  startLine?: number;
+  pageSize?: number;
+  responseTargetBytes?: number;
+}
+read_file_page_continue: { continuationToken: string; pageSize?: number }
+```
+
+Paged responses always expose whether more content remains. The page adapter
+does not replace or reduce the existing unrestricted trusted-workspace read
+path.
+
+### Full-visibility indexing
+
+```ts
+workspace_index: { workspaceId: string; rebuild?: boolean; includeIgnored?: boolean }
+workspace_index_status: { workspaceId: string }
+workspace_index_watch: { workspaceId: string; debounceMs?: number; concurrency?: number }
+workspace_index_stop: { workspaceId: string }
+```
+
+Index scheduling uses the automatic context-economy policy for vendor/build,
+binary, and generated paths. It must not be treated as an access denial:
+explicit index/search requests and direct file reads can still inspect any path
+allowed by the existing workspace boundary, including hidden, ignored,
+generated, dependency, and environment files.
+
+### Roadmap extension catalog
+
+The Phase 05–41 additive tools are defined in
+[`../../packages/mcp-server/src/upgrade-catalog.ts`](../../packages/mcp-server/src/upgrade-catalog.ts).
+Each entry carries its phase, permission class, tags, streamability, and
+parallel-safety metadata. `tool_search` and `tool_describe` expose this metadata
+without replacing the full `tools/list` contract.
+
+### Compound execution
+
+```ts
+tool_batch: {
+  parallel?: boolean;
+  calls?: Array<{
+    id?: string;
+    tool: string;
+    arguments?: Record<string, unknown>;
+    dependsOn?: string[];
+    timeoutMs?: number;
+  }>;
+  groups?: Array<{
+    id?: string;
+    parallel?: boolean;
+    calls: Array<{
+      id?: string;
+      tool: string;
+      arguments?: Record<string, unknown>;
+      dependsOn?: string[];
+      timeoutMs?: number;
+    }>;
+  }>;
+}
+```
+
+The input contains at most 50 child calls. Results retain input order and
+include per-child status, duration, error, and returned MCP response. Read-only
+children can run in parallel; side-effecting children are serialized by the
+early compound safety guard. Nested `tool_batch` calls are rejected, and every
+child still traverses the normal registry confirmation/host-approval boundary;
+a parent batch never grants mutation privilege to a child.
+
+## Change protocol
+
+Any tool contract change must include:
+
+1. a schema/source change;
+2. a registry/tool-list test asserting the tool remains discoverable;
+3. permission and annotation assertions;
+4. success and failure tests for the application behavior;
+5. an audit/Live Logs assertion for new compound children or side effects;
+6. a fresh benchmark or regression comparison when latency, bytes, or result
+   shape can change;
+7. an update to this file and `docs/mcp/MCP_TOOL_CATALOG.md`.
+
+Adding a compound tool is additive. Removing or narrowing a primitive tool is a
+breaking change and is outside this upgrade roadmap.

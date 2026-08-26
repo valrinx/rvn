@@ -1,0 +1,25 @@
+{
+  "name": "@rvn/cli",
+  "version": "4.10.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@rvn/application": "workspace:*",
+    "@rvn/audit": "workspace:*",
+    "@rvn/capabilities": "workspace:*",
+    "@rvn/codex": "workspace:*",
+    "@rvn/domain": "workspace:*",
+    "@rvn/extensions": "workspace:*",
+    "@rvn/mcp-server": "workspace:*",
+    "@rvn/permissions": "workspace:*",
+    "@rvn/shared": "workspace:*",
+    "@rvn/storage": "workspace:*",
+    "@rvn/workspace": "workspace:*"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --outDir dist"
+  },
+  "license": "MIT"
+}

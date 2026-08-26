@@ -1,0 +1,56 @@
+{
+  "name": "@rvn/desktop",
+  "version": "4.10.0",
+  "private": true,
+  "description": "Windows-first local AI-agent runtime and MCP gateway with 218 configurable tools.",
+  "author": "Adisorn",
+  "homepage": "https://github.com/valrinx/rvn#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/valrinx/rvn.git"
+  },
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "node scripts/write-capability-integrity.mjs && tsc -p tsconfig.main.json && esbuild src/main/main.ts --bundle --platform=node --format=esm --external:electron --banner:js=\"import { createRequire as __rvnCreateRequire } from 'node:module'; const require = __rvnCreateRequire(import.meta.url);\" --outfile=dist/main/main.js && esbuild src/preload/index.ts --bundle --platform=browser --format=cjs --conditions=development --external:electron --outfile=dist/preload/index.cjs && vite build --config vite.config.ts && esbuild ../cli/src/bin/mcp-stdio.ts --bundle --platform=node --format=cjs --outfile=build/rvn-mcp-stdio.cjs && node scripts/write-stdio-launcher.mjs",
+    "build:main": "node scripts/write-capability-integrity.mjs && tsc -p tsconfig.main.json && esbuild src/main/main.ts --bundle --platform=node --format=esm --external:electron --banner:js=\"import { createRequire as __rvnCreateRequire } from 'node:module'; const require = __rvnCreateRequire(import.meta.url);\" --outfile=dist/main/main.js",
+    "build:renderer": "vite build --config vite.config.ts",
+    "package:windows": "corepack pnpm@10.15.0 build && electron-builder --config electron-builder.yml --win nsis --x64 --publish never",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "typecheck": "tsc -b",
+    "test:e2e": "node node_modules/electron/install.js && tsc -p tsconfig.main.json && esbuild src/main/main.ts --bundle --platform=node --format=esm --external:electron --banner:js=\"import { createRequire as __rvnCreateRequire } from 'node:module'; const require = __rvnCreateRequire(import.meta.url);\" --outfile=dist/main/main.js && esbuild src/preload/index.ts --bundle --platform=browser --format=cjs --conditions=development --external:electron --outfile=dist/preload/index.cjs && vite build --config vite.config.ts && playwright test --config playwright.config.ts",
+    "electron:install": "node node_modules/electron/install.js"
+  },
+  "dependencies": {
+    "@rvn/application": "workspace:*",
+    "@rvn/audit": "workspace:*",
+    "@rvn/capabilities": "workspace:*",
+    "@rvn/codex": "workspace:*",
+    "@rvn/domain": "workspace:*",
+    "@rvn/extensions": "workspace:*",
+    "@rvn/ipc-contracts": "workspace:*",
+    "@rvn/mcp-server": "workspace:*",
+    "@rvn/permissions": "workspace:*",
+    "@rvn/process": "workspace:*",
+    "@rvn/search": "workspace:*",
+    "@rvn/shared": "workspace:*",
+    "@rvn/storage": "workspace:*",
+    "@rvn/workspace": "workspace:*",
+    "@phosphor-icons/react": "2.1.10",
+    "electron-updater": "^6.8.9",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@playwright/test": "1.55.0",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "5.0.2",
+    "electron": "43.4.1",
+    "electron-builder": "26.0.12",
+    "esbuild": "0.25.12",
+    "vite": "7.3.6"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,60 @@
+appId: com.rvn.desktop
+productName: rvn
+asar: true
+npmRebuild: false
+directories:
+  output: dist/installers
+  buildResources: build
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - build/icon.ico
+  - build/icon.png
+  - package.json
+publish:
+  provider: github
+  owner: engasnm111
+  repo: rvn
+  releaseType: release
+extraResources:
+  - from: ../../packages/capabilities/src/windows-capability-bridge.ps1
+    to: windows-capability-bridge.ps1
+  - from: build/windows-capability-bridge.sha256
+    to: windows-capability-bridge.sha256
+  - from: build/rvn-mcp-stdio.cjs
+    to: rvn-mcp-stdio.cjs
+  - from: build/rvn-mcp-stdio.cmd
+    to: rvn-mcp-stdio.cmd
+  - from: build/rvn-node.exe
+    to: rvn-node.exe
+  - from: ../../native/windows-ocr/bin
+    to: windows-ocr
+# Tunnel profile expects these next to rvn.exe (not only under resources/).
+extraFiles:
+  - from: build/rvn-mcp-stdio.cjs
+    to: rvn-mcp-stdio.cjs
+  - from: build/rvn-mcp-stdio.cmd
+    to: rvn-mcp-stdio.cmd
+  - from: build/rvn-node.exe
+    to: rvn-node.exe
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: rvn-Setup-${version}.${ext}
+  # Keep the branded icon embedded in rvn.exe for Windows shortcuts and taskbar.
+  signAndEditExecutable: true
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  # Create the Start Menu link in installer.nsh from $INSTDIR so no build-user path can be baked in.
+  createStartMenuShortcut: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  uninstallDisplayName: ${productName}
+  include: build/installer.nsh

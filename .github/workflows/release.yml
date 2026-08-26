@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-release:
+    name: Publish Verified Windows Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify release tag matches package version
+        shell: pwsh
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $expectedTag = "v$($package.version)"
+          if ("${{ github.ref_name }}" -ne $expectedTag) {
+            throw "Release tag must match package.json version. Expected $expectedTag but got ${{ github.ref_name }}"
+          }
+
+      - name: Download verified CI artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repository = "${{ github.repository }}"
+          $sha = "${{ github.sha }}"
+          $artifactName = "windows-release-$sha"
+          $runsJson = gh run list --repo $repository --workflow ci.yml --commit $sha --event push --status success --limit 20 --json databaseId,headSha,conclusion
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to query successful CI runs for $sha"
+          }
+          $runs = @($runsJson | ConvertFrom-Json)
+          $run = $runs | Where-Object { $_.headSha -eq $sha -and $_.conclusion -eq 'success' } | Select-Object -First 1
+          if ($null -eq $run) {
+            throw "Release requires a successful CI run for exact commit $sha before tagging."
+          }
+
+          $installerDirectory = Join-Path $PWD 'apps\desktop\dist\installers'
+          New-Item -ItemType Directory -Force -Path $installerDirectory | Out-Null
+          gh run download "$($run.databaseId)" --repo $repository --name $artifactName --dir $installerDirectory
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to download verified artifact '$artifactName' from CI run $($run.databaseId)."
+          }
+
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $requiredFiles = @(
+            "rvn-Setup-$($package.version).exe",
+            "rvn-Setup-$($package.version).exe.blockmap",
+            'latest.yml'
+          )
+          foreach ($fileName in $requiredFiles) {
+            $filePath = Join-Path $installerDirectory $fileName
+            if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
+              throw "Verified CI artifact is missing required release file: $fileName"
+            }
+          }
+          Write-Host "Using verified CI artifact from run $($run.databaseId) for commit $sha"
+
+      - name: Create GitHub Release & Upload Installer
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/dist/installers/*.exe
+            apps/desktop/dist/installers/*.blockmap
+            apps/desktop/dist/installers/latest.yml
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
