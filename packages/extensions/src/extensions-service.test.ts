@@ -17,7 +17,7 @@ describe('LocalExtensionsService MCP bridge', () => {
     let currentSettings = settingsWithMockServer();
     const service = new LocalExtensionsService({
       settings: currentSettings,
-      settingsProvider: () => currentSettings,
+      settingsProvider: (): typeof DEFAULT_EXTENSIONS_SETTINGS => currentSettings,
       homeDir: process.cwd(),
       appDataDir: process.cwd(),
     });

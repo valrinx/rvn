@@ -31,7 +31,7 @@ export class LocalExtensionsService implements ExtensionsService {
 
   public constructor(options: LocalExtensionsServiceOptions) {
     this.settings = options.settings;
-    this.settingsProvider = options.settingsProvider ?? (() => this.settings);
+    this.settingsProvider = options.settingsProvider ?? ((): ExtensionsSettings => this.settings);
     this.homeDir = options.homeDir;
     this.appDataDir = options.appDataDir;
     this.workspaceRootProvider = options.workspaceRootProvider ?? (async (): Promise<undefined> => undefined);

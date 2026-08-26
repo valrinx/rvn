@@ -6,9 +6,9 @@ import { tunnelLockPath } from '../src/main/tunnel-lock.js';
 describe('rvn tunnel identity', () => {
   it('uses profile, secret, log, and lock files that cannot collide with rvn', () => {
     const controller = new TunnelController({
-      getClientPath: () => null,
-      setClientPath: () => undefined,
-      getDataPath: () => 'C:\\rvn-data',
+      getClientPath: (): null => null,
+      setClientPath: (): undefined => undefined,
+      getDataPath: (): string => 'C:\\rvn-data',
     });
     const profileDirectory = controller.profileDirectory();
 

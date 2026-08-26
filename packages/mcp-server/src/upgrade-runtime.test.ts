@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ok } from '@rvn/domain';
+import { ok, type Result } from '@rvn/domain';
 import type { FileActor } from '@rvn/application';
 import { UpgradeRuntimeService } from './upgrade-runtime.js';
 import { UPGRADE_TOOL_CATALOG } from './upgrade-catalog.js';
@@ -32,7 +32,7 @@ describe('upgrade runtime', () => {
   it('returns screenshot payloads as MCP image content', async () => {
     const registry = new ToolRegistry({
       capabilities: {
-        async execute(tool, input) {
+        async execute(tool, input): Promise<Result<unknown>> {
           expect(tool).toBe('vision');
           expect(input).toMatchObject({ action: 'capture_window', app: { title: 'rvn' } });
           return ok({
