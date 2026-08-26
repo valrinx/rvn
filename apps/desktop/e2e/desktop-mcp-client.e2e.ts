@@ -56,7 +56,7 @@ test('desktop serves the real MCP client development workflow', async () => {
     page = context.pages()[0];
     if (page === undefined) throw new Error('Electron did not create a renderer page');
 
-    await expect(page.getByRole('heading', { name: 'ศูนย์ควบคุม Agent' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /สถานะภาพรวม|Overview Status/ })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('workspace-real-root')).toHaveText(fixtureRealRoot, { timeout: 30_000 });
     const workspaceId = (await page.getByTestId('workspace-id').textContent())?.trim();
     if (workspaceId === undefined || workspaceId.length === 0) throw new Error('Desktop did not expose the registered workspace ID');
@@ -144,7 +144,7 @@ test('desktop serves the real MCP client development workflow', async () => {
 
     await client.close();
     client = undefined;
-    await page.getByRole('button', { name: 'หยุด', exact: true }).click();
+    await page.getByRole('button', { name: 'Stop Agent', exact: true }).click();
     await expect(page.getByTestId('mcp-status')).toHaveText(/Agent หยุดทำงาน|Agent stopped/, { timeout: 30_000 });
     await browser.close();
     browser = undefined;
