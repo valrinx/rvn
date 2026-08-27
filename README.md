@@ -19,7 +19,7 @@
 ## ติดตั้งแบบง่ายที่สุด
 
 1. เปิดหน้า [Latest Release](https://github.com/valrinx/rvn/releases/latest)
-2. ดาวน์โหลด `rvn-Setup-4.10.0.exe`
+2. ดาวน์โหลด `rvn-Setup-5.0.0.exe`
 3. เปิดไฟล์และกดติดตั้ง จากนั้นเปิด **RVN** จาก Start Menu
 4. เข้า **Projects** เพื่อเพิ่มโฟลเดอร์งาน แล้วเลือกเป็น Active Project
 5. เข้า **Settings** เลือกระดับสิทธิ์ที่ต้องการ
