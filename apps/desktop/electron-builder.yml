@@ -14,7 +14,7 @@ files:
   - package.json
 publish:
   provider: github
-  owner: engasnm111
+  owner: valrinx
   repo: rvn
   releaseType: release
 extraResources:

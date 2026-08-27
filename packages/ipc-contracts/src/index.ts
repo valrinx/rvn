@@ -1,5 +1,5 @@
 export const APP_NAME = 'rvn';
-export const APP_VERSION = '4.10.0';
+export const APP_VERSION = '5.0.0';
 
 export const ipcChannels = {
   listWorkspaces: 'rvn:list-workspaces',

@@ -1,6 +1,6 @@
 {
   "name": "@rvn/cli",
-  "version": "4.10.0",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
