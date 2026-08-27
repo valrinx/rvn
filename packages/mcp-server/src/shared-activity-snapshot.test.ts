@@ -7,6 +7,7 @@ import {
   SharedActivitySnapshotLease,
   parseProcessProbeOutput,
   probeProcessStart,
+  windowsProcessProbeCommand,
   readSharedActivitySnapshot,
   sharedActivityLeaseDirectoryPath,
   sharedActivityLeasePath,
@@ -23,6 +24,14 @@ afterEach(async () => {
 });
 
 describe('process start probe output', () => {
+  it('uses Win32 process creation metadata so protected processes remain probeable', () => {
+    const command = windowsProcessProbeCommand(3036);
+
+    expect(command).toContain('Get-CimInstance Win32_Process');
+    expect(command).toContain('$p.CreationDate');
+    expect(command).not.toContain('Get-Process -Id');
+  });
+
   it('treats empty stdout as unverifiable instead of proving the process is gone', () => {
     expect(parseProcessProbeOutput('')).toEqual({ state: 'unverifiable', reason: 'invalid_probe_response' });
     expect(parseProcessProbeOutput('GONE')).toEqual({ state: 'gone' });

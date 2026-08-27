@@ -293,6 +293,11 @@ export function parseProcessProbeOutput(stdout: string): ProcessProbeResult {
   return { state: 'unverifiable', reason: 'invalid_probe_response' };
 }
 
+/** Build the Windows process probe using CIM creation metadata rather than Get-Process.StartTime. */
+export function windowsProcessProbeCommand(pid: number): string {
+  return `$ErrorActionPreference='Stop'; try{$p=Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop}catch{throw}; if($null -eq $p){'GONE';exit 0}; if($null -eq $p.CreationDate){throw 'Process creation time unavailable'}; 'LIVE|' + $p.CreationDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ',[Globalization.CultureInfo]::InvariantCulture)`;
+}
+
 /** Legacy v1 fixed path retained only for migration/read compatibility. */
 export function sharedActivitySnapshotPath(profileDirectory: string): string {
   return path.join(profileDirectory, LEGACY_SNAPSHOT_FILE);
@@ -486,7 +491,7 @@ async function runWindowsProcessProbe(pid: number, timeoutMs: number): Promise<s
     '-NoProfile',
     '-NonInteractive',
     '-Command',
-    `$ErrorActionPreference='Stop'; try{$p=Get-Process -Id ${pid} -ErrorAction Stop}catch{if($_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId,*'){'GONE';exit 0};throw}; 'LIVE|' + $p.StartTime.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ',[Globalization.CultureInfo]::InvariantCulture)`,
+    windowsProcessProbeCommand(pid),
   ], { windowsHide: true, encoding: 'utf8', timeout: timeoutMs });
   return stdout;
 }
