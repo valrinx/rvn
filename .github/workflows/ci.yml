@@ -39,7 +39,7 @@ jobs:
       - name: Run authoritative verification gate
         shell: powershell
         run: |
-          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/verify-release.ps1 *>&1 | Tee-Object -FilePath release-verification.log
+          & "$PWD/scripts/verify-release.ps1" *>&1 | Tee-Object -FilePath release-verification.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload release verification diagnostics
