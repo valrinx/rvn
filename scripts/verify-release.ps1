@@ -13,9 +13,14 @@ function Invoke-ReleaseStage {
     )
 
     Write-Host "==> $Name"
-    & corepack pnpm@10.15.0 @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Release stage '$Name' failed with exit code $LASTEXITCODE"
+    # Some successful commands intentionally write diagnostics to stderr.  Merge the
+    # native streams so Windows PowerShell does not promote those lines to a
+    # terminating NativeCommandError under ErrorActionPreference=Stop.
+    $stageOutput = & corepack pnpm@10.15.0 @Arguments 2>&1
+    $stageOutput | ForEach-Object { Write-Output $_ }
+    $stageExitCode = $LASTEXITCODE
+    if ($stageExitCode -ne 0) {
+        throw "Release stage '$Name' failed with exit code $stageExitCode"
     }
 }
 
