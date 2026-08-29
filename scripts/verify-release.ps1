@@ -13,12 +13,21 @@ function Invoke-ReleaseStage {
     )
 
     Write-Host "==> $Name"
-    # Some successful commands intentionally write diagnostics to stderr.  Merge the
-    # native streams so Windows PowerShell does not promote those lines to a
-    # terminating NativeCommandError under ErrorActionPreference=Stop.
-    $stageOutput = & corepack pnpm@10.15.0 @Arguments 2>&1
-    $stageOutput | ForEach-Object { Write-Output $_ }
-    $stageExitCode = $LASTEXITCODE
+    # Capture native streams outside the PowerShell error pipeline.  Some
+    # successful commands intentionally write diagnostics to stderr, and
+    # Windows PowerShell promotes those lines to NativeCommandError otherwise.
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $corepack = (Get-Command corepack -CommandType Application | Select-Object -First 1).Source
+        $process = Start-Process -FilePath $corepack -ArgumentList (@('pnpm@10.15.0') + $Arguments) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        Get-Content -LiteralPath $stdoutPath | ForEach-Object { Write-Output $_ }
+        Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Output $_ }
+        $stageExitCode = $process.ExitCode
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
     if ($stageExitCode -ne 0) {
         throw "Release stage '$Name' failed with exit code $stageExitCode"
     }
