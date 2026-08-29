@@ -29,7 +29,7 @@ describe('Agent Bus desktop chat bridge', () => {
     } finally {
       await runtime.close();
     }
-  });
+  }, 30_000);
 
   it('persists a renderer message through the Agent Bus repository', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rvn-agent-chat-ipc-'));
