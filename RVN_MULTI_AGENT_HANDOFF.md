@@ -2253,3 +2253,14 @@ Phase 1 live Agent Work Flow acceptance: **PASSED**. No generic MCP behavior or 
 ### Single next action
 
 Proceed with **`task_get`** only.
+
+## 65. Windows release packaging runner compatibility (2026-08-29)
+
+Version `5.0.1` keeps the branded executable configuration (`signAndEditExecutable: true`) for local builds and icon metadata. The Windows release script now passes the narrow Electron Builder override `--config.win.signAndEditExecutable=false` so restricted GitHub Windows runners do not need the `winCodeSign` Darwin symlink privilege while creating the NSIS installer. Installer and uninstaller icons remain configured in `electron-builder.yml`.
+
+### Verification
+
+- Packaging regression test: PASS (`4/4`).
+- Clean-cache CI-mode `package:windows`: PASS; produced `rvn-Setup-5.0.1.exe`.
+- Full local `scripts/verify-release.ps1` with `CI=true` and a clean Electron Builder cache: PASS.
+- GitHub Actions run for the first pushed candidate (`33224905221`) failed with only a generic process-exit annotation; no tag was created from that run. A subsequent push must pass the authoritative gate before tagging `v5.0.1`.
