@@ -35,9 +35,20 @@ function Invoke-ReleaseStage {
 
 function Assert-RepositoryChecks {
     Write-Host '==> git diff --check'
-    & git diff --check 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "git diff --check failed with exit code $LASTEXITCODE"
+    $gitExecutable = (Get-Command git -CommandType Application | Select-Object -First 1).Source
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $diffCheckProcess = Start-Process -FilePath $gitExecutable -ArgumentList @('diff', '--check') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        Get-Content -LiteralPath $stdoutPath | ForEach-Object { Write-Host $_ }
+        Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Host $_ }
+        $diffCheckExitCode = $diffCheckProcess.ExitCode
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($diffCheckExitCode -ne 0) {
+        throw "git diff --check failed with exit code $diffCheckExitCode"
     }
 
     $trackedFiles = @(git ls-files)

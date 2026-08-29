@@ -26,7 +26,8 @@ describe('MVP release verification gate', () => {
       expect(index, `missing release stage: ${stage}`).toBeGreaterThan(previousIndex);
       previousIndex = index;
     }
-    expect(script).toContain('if ($LASTEXITCODE -ne 0)');
+    expect(script).toContain('if ($stageExitCode -ne 0)');
+    expect(script).toContain('if ($diffCheckExitCode -ne 0)');
     expect(script).toContain('git diff --check');
   });
 
