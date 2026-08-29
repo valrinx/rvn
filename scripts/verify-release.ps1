@@ -35,7 +35,7 @@ function Invoke-ReleaseStage {
 
 function Assert-RepositoryChecks {
     Write-Host '==> git diff --check'
-    & git diff --check
+    & git diff --check 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "git diff --check failed with exit code $LASTEXITCODE"
     }
