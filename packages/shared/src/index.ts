@@ -1,5 +1,5 @@
 export const APP_NAME = 'rvn';
-export const APP_VERSION = '5.0.1';
+export const APP_VERSION = '5.0.2';
 export { isUnrestricted, unrestrictedFromEnv, unrestrictedFromSetting, UNRESTRICTED_SETTING_KEY, type ProcessEnvLike } from './unrestricted.js';
 
 export { resolveRvnDataPath, type DataPathEnvironment } from './data-path.js';

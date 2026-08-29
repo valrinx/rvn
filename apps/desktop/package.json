@@ -1,6 +1,6 @@
 {
   "name": "@rvn/desktop",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "private": true,
   "description": "Windows-first local AI-agent runtime and MCP gateway with 218 configurable tools.",
   "author": "Adisorn",

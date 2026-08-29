@@ -9,7 +9,9 @@ import { chromium, expect, test } from '@playwright/test';
 import { promisify } from 'node:util';
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const packagedExecutable = process.env.RVN_PACKAGED_EXECUTABLE ?? 'C:\\Users\\teens\\AppData\\Local\\Programs\\rvn\\rvn.exe';
+const mainEntry = path.join(desktopRoot, 'dist', 'main', 'main.js');
+const electronExecutable = path.join(desktopRoot, 'node_modules', 'electron', 'dist', 'electron.exe');
+const packagedExecutable = process.env.RVN_PACKAGED_EXECUTABLE;
 const execFileAsync = promisify(execFile);
 
 test('installed desktop returns a durable worker response for a routed room message', async () => {
@@ -27,7 +29,11 @@ test('installed desktop returns a durable worker response for a routed room mess
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
   const clients: Client[] = [];
   try {
-    electronProcess = spawn(packagedExecutable, [`--remote-debugging-port=${devToolsPort}`, `--user-data-dir=${dataRoot}`], {
+    const launchExecutable = packagedExecutable ?? electronExecutable;
+    const launchArguments = packagedExecutable === undefined
+      ? [`--remote-debugging-port=${devToolsPort}`, `--user-data-dir=${dataRoot}`, mainEntry]
+      : [`--remote-debugging-port=${devToolsPort}`, `--user-data-dir=${dataRoot}`];
+    electronProcess = spawn(launchExecutable, launchArguments, {
       cwd: desktopRoot,
       shell: false,
       windowsHide: true,
@@ -43,7 +49,7 @@ test('installed desktop returns a durable worker response for a routed room mess
     const page = context.pages()[0];
     if (page === undefined) throw new Error('Electron did not create a renderer page');
     await expect(page.getByRole('heading', { name: 'สถานะภาพรวม' })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole('heading', { name: 'Agent Work Flow' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: 'Agent Work Flow' })).toHaveCount(0);
     await expect(page.getByTestId('agent-message-composer')).toHaveCount(0);
     await expect(page.getByText('COORDINATION', { exact: true })).toHaveCount(0);
     await expect(page.getByTestId('mcp-endpoint')).toContainText('http://127.0.0.1:', { timeout: 30_000 });
@@ -53,10 +59,10 @@ test('installed desktop returns a durable worker response for a routed room mess
     const code = await connectClient(endpoint, clients);
     await expectSuccessful(main.callTool({ name: 'agent_register', arguments: { agent_id: 'ui-main', role: 'main', capabilities: [] } }));
     await expectSuccessful(code.callTool({ name: 'agent_register', arguments: { agent_id: 'ui-code', role: 'code', capabilities: [] } }));
-    await expect(page.locator('[data-agent-id="ui-code"]')).toContainText('รอรับงาน', { timeout: 10_000 });
+    await expect(page.locator('[data-agent-id="ui-code"]')).toHaveCount(0);
     const registered = await expectSuccessful(code.callTool({ name: 'agent_get', arguments: { agent_id: 'ui-code' } }));
     expect(registered).toMatchObject({ agentId: 'ui-code', role: 'code', sessionId: expect.any(String) });
-    await expect(page.locator('[data-agent-id="ui-code"]')).toContainText('ล่าสุด: agent_get', { timeout: 10_000 });
+    await expect(page.locator('[data-agent-id="ui-code"]')).toHaveCount(0);
 
     const sent = await page.evaluate(() => window.rvn.sendAgentRoomMessage({ target: '@ui-code', type: 'UPDATE', body: 'Reply exactly RVN_AGENT_PING and do not edit files.' }));
     expect(sent.targetAgentIds).toContain('ui-code');

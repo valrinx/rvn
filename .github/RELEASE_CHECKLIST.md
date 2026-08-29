@@ -1,6 +1,6 @@
 # rvn Release Checklist
 
-**Current version:** `v5.0.1` - Windows installer `rvn-Setup-5.0.1.exe`; MCP registry **218 configurable tools / 212 advertised by default**.
+**Current version:** `v5.0.2` - Windows installer `rvn-Setup-5.0.2.exe`; MCP registry **218 configurable tools / 212 advertised by default**.
 
 Run the release verification from PowerShell at the repository root. The automated gate must fail fast on any non-zero stage and `git diff --check` must pass before packaging or publishing.
 

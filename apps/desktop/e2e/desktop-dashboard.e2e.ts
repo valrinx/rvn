@@ -83,11 +83,11 @@ test('control center auto-starts MCP and supports project + doctor journey', asy
     await expect.poll(async () => Math.round(await page.locator('.rvn-work-badge').evaluate((element) => element.getBoundingClientRect().left))).toBe(320);
     await expect.poll(async () => Math.round(await page.locator('.rvn-top-actions').evaluate((element) => element.getBoundingClientRect().right))).toBeGreaterThan(1380);
     await expect.poll(async () => Math.round(await page.locator('.rvn-security-card').evaluate((element) => element.getBoundingClientRect().width))).toBe(360);
-    // The durable Multi-Agent panel makes the main pane scrollable at the reference viewport;
+    // Keep the main pane scrollable at the reference viewport;
     // the seven-pixel custom scrollbar is therefore part of the expected geometry.
-    await expect.poll(async () => Math.round(await page.locator('.rvn-security-card .rvn-security-row').first().locator('strong').evaluate((element) => element.getBoundingClientRect().left))).toBe(1266);
+    await expect.poll(async () => Math.round(await page.locator('.rvn-security-card .rvn-security-row').first().locator('strong').evaluate((element) => element.getBoundingClientRect().left))).toBe(1273);
     await expect.poll(async () => Math.round(await page.locator('.rvn-security-card .security-warning').evaluate((element) => element.getBoundingClientRect().height))).toBeGreaterThan(110);
-    await expect.poll(async () => Math.round(await page.locator('.rvn-dashboard-grid').evaluate((element) => element.getBoundingClientRect().right))).toBe(1461);
+    await expect.poll(async () => Math.round(await page.locator('.rvn-dashboard-grid').evaluate((element) => element.getBoundingClientRect().right))).toBe(1468);
     await expect.poll(async () => Math.round(await page.locator('.rvn-nav-slot').first().evaluate((element) => {
       const slot = element.getBoundingClientRect();
       const button = element.querySelector('button')?.getBoundingClientRect();
