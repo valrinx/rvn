@@ -57,8 +57,8 @@ jobs:
         run: |
           if (Test-Path -LiteralPath release-verification.log) {
             $diagnosticLines = Get-Content -LiteralPath release-verification.log |
-              Where-Object { $_ -match '==>|Release stage|failed|error|Error|ERROR|Test Files|Tests ' } |
-              Select-Object -Last 40
+              Where-Object { $_ -match '==>|Release stage|failed|error|Error|ERROR|FAIL|ERR_|EBUSY|EPERM|ENOTEMPTY|Exit status|OperationStopped|CategoryInfo|FullyQualifiedId|Test Files|Tests ' } |
+              Select-Object -Last 80
             if ($diagnosticLines.Count -eq 0) {
               $diagnosticLines = Get-Content -LiteralPath release-verification.log | Select-Object -Last 25
             }
