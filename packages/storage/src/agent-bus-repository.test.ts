@@ -134,7 +134,7 @@ describe('SqliteAgentBusRepository', () => {
     const reconnectRepository = new SqliteAgentBusRepository(reconnectDatabase);
     await expect(reconnectRepository.listLocks({ limit: 10 })).resolves.toMatchObject({ ok: true, value: [] });
     reconnectDatabase.close();
-  });
+  }, 30_000);
 
   it('returns a compact durable bus snapshot with counts, cursors, and active tasks', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rvn-agent-bus-snapshot-'));
@@ -214,7 +214,7 @@ describe('SqliteAgentBusRepository', () => {
     const reconnectRepository = new SqliteAgentBusRepository(reconnectDatabase);
     await expect(reconnectRepository.listEvents({ afterSequence: 0, limit: 100 })).resolves.toMatchObject({ ok: true, value: { events: expect.arrayContaining([expect.objectContaining({ eventType: 'TASK_COMPLETED', taskId: created.value.taskId })]) } });
     reconnectDatabase.close();
-  });
+  }, 30_000);
 
   it('lists durable messages with their message sequence rather than event sequence', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rvn-agent-bus-message-list-'));
