@@ -62,7 +62,8 @@ jobs:
             if ($diagnosticLines.Count -eq 0) {
               $diagnosticLines = Get-Content -LiteralPath release-verification.log | Select-Object -Last 25
             }
-            $diagnosticLines | ForEach-Object { Write-Host "::error::$($_)" }
+            $diagnosticMessage = [string]::Join(' | ', $diagnosticLines)
+            Write-Host "::error::$diagnosticMessage"
           }
 
       - name: Upload verified Windows release artifact
