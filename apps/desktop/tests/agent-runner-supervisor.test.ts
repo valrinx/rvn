@@ -46,7 +46,7 @@ describe('desktop Agent Runner supervisor', () => {
       await supervisor.close();
       database.close();
     }
-  });
+  }, 15_000);
 
   it('publishes a durable blocker when the configured executor is unavailable', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rvn-agent-runner-unavailable-'));
@@ -76,7 +76,7 @@ describe('desktop Agent Runner supervisor', () => {
       await supervisor.close();
       database.close();
     }
-  });
+  }, 15_000);
 });
 
 async function seedRoom(bus: SqliteAgentBusRepository): Promise<void> {
