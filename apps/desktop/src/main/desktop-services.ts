@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import {
@@ -29,11 +30,13 @@ import {
   type ExtensionsSettings,
 } from '@rvn/extensions';
 import {
+  AgentSessionManager,
   ActivityTracker,
   composeActivitySinks,
   createFileActivitySink,
   mcpActivityLogPath,
   type ActivitySinkEvent,
+  type InFlightToolCall,
   type HostMutationApprovalRequest,
   type McpApplicationServices,
   type McpHttpServerOptions,
@@ -80,11 +83,13 @@ import {
   loadCheckpointEncryptionKey,
   type DestructiveAutoApprovalPolicy,
 } from '@rvn/shared';
-import { AesGcmCheckpointCipher, SqliteAuditRepository, SqliteBackupService, SqliteCheckpointRepository, SqliteDatabase, SqliteSettingsRepository, SqliteWorkspaceRepository, type BackupReason, type BackupSummary } from '@rvn/storage';
+import { AesGcmCheckpointCipher, SqliteAgentBusRepository, SqliteAuditRepository, SqliteBackupService, SqliteCheckpointRepository, SqliteDatabase, SqliteSettingsRepository, SqliteWorkspaceRepository, type BackupReason, type BackupSummary } from '@rvn/storage';
 import type { Workspace } from '@rvn/workspace';
 import { isDriveRoot, machineRootPath, SecretPolicy, WorkspacePathGuard, WorkspaceService } from '@rvn/workspace';
 import {
   type AddWorkspaceRequest,
+  type AgentSessionSummary,
+  type AgentChatMessage,
   type BackupSummary as IpcBackupSummary,
   type AgentState,
   type AuditEventSummary,
@@ -92,8 +97,12 @@ import {
   type ClearWorkLogRequest,
   type ConfigureTunnelProfileRequest,
   type DeleteWorkspaceRequest,
+  type CreateAgentSessionRequest,
+  type DisconnectAgentSessionRequest,
   type ConnectionModes,
   type DashboardSnapshot,
+  type AgentBusDashboardSnapshot,
+  type AgentRoomChatMessage,
   type DoctorReport,
   type InFlightWorkItem,
   type LogSnapshot,
@@ -105,6 +114,8 @@ import {
   type RestoreCheckpointRequest,
   type RestoreRecoveryItemRequest,
   type SaveTunnelApiKeyRequest,
+  type SendAgentMessageRequest,
+  type SendAgentRoomMessageRequest,
   type ScheduleRestoreBackupRequest,
   type SelectWorkspaceRequest,
   type SetWorkspaceArchivedRequest,
@@ -133,6 +144,7 @@ import { DesktopMcpLifecycle } from './mcp-lifecycle.js';
 import { WorkLogViewState } from './work-log-view-state.js';
 import { CLIENT_PATH_SETTING, TunnelController } from './tunnel-controller.js';
 import { SystemMetricsSampler } from './system-metrics.js';
+import { DesktopAgentRunnerSupervisor } from './agent-runner-supervisor.js';
 
 const actor: FileActor = { clientId: 'desktop-renderer', clientName: `${APP_NAME} desktop` };
 const mcpActor: FileActor = { clientId: 'desktop-mcp-http', clientName: `${APP_NAME} desktop MCP` };
@@ -175,11 +187,13 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
   const checkpointCipher = new AesGcmCheckpointCipher(loadCheckpointEncryptionKey(dataPath));
   const checkpointRepository = new SqliteCheckpointRepository(database, checkpointCipher);
   const backupService = new SqliteBackupService(database, { backupDirectory, databaseFilename });
-  void backupService.ensureRecent().catch((error: unknown) => {
+  const automaticBackupPromise = backupService.ensureRecent().catch((error: unknown) => {
     console.error(`Automatic database backup failed: ${error instanceof Error ? error.message : 'unknown error'}`);
   });
   const workspaceService = new WorkspaceService(workspaceRepository);
   const gitService = new GitService(workspaceRepository);
+  const agentBusRepository = new SqliteAgentBusRepository(database);
+  const agentSessionManager = new AgentSessionManager(agentBusRepository);
   const codexDiscovery = new CodexDiscovery();
   const executableResolver = new PathExecutableResolver();
   const storedProfile = settingsRepository.get(permissionSettingKey);
@@ -230,6 +244,12 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
     auditService,
     profileProvider: activePermissionProfile,
   });
+  const agentRunnerSupervisor = new DesktopAgentRunnerSupervisor(agentBusRepository, codexService, {
+    getActiveWorkspace: async (): Promise<WorkspaceScope | null> => {
+      const selected = await resolveSelectedWorkspace(workspaceService, settingsRepository);
+      return selected === null ? null : { workspaceId: selected.id, rootPath: selected.realRootPath };
+    },
+  });
   const capabilityRuntime = createLocalCapabilityRuntime(dataPath, async (): Promise<readonly string[]> => (
     (await workspaceRepository.list()).map((workspace) => workspace.realRootPath)
   ), unrestricted, () => readSettings().capabilityRoots, () => readSettings().shellSynchronousWaitSeconds);
@@ -275,6 +295,8 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
     git: gitService,
     process: processService,
     codex: codexService,
+    agentBus: agentBusRepository,
+    agentSessions: agentSessionManager,
   };
   const activityLogPath = mcpActivityLogPath(dataPath);
   let activityLogDiagnostic: ((key: string, message: string) => void) | null = null;
@@ -489,6 +511,7 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
       const workLog = await buildWorkLog(auditRepository, workLogViewState);
       const inFlight = activityTracker.listInFlight().map(toInFlightItem);
       const tunnel = await tunnelController.status();
+      const agentBus = await buildAgentBusDashboard(agentBusRepository, activityTracker.listInFlight(), workLog);
       const backups = await backupService.list();
       let recovery: DashboardSnapshot['recovery'];
       if (selectedWorkspace === null) {
@@ -538,7 +561,46 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
         tunnel,
         settings: readSettings(),
         appVersion: APP_VERSION,
+        agentBus,
       };
+    },
+    createAgentSession: async (request: CreateAgentSessionRequest): Promise<AgentSessionSummary> => {
+      const sessionId = `desktop-${randomUUID()}`;
+      const agent = unwrap(await agentSessionManager.bind({ agentId: request.agentId, role: request.role, sessionId, transport: 'stdio', capabilities: [] }), 'Agent session could not be created');
+      if (agent.role.trim().toLowerCase() !== 'main') {
+        const room = await ensureDesktopAgentRoom(agentBusRepository);
+        if (room !== null) unwrap(await agentRunnerSupervisor.ensureAgent(agent.agentId, room.roomId), 'Agent runner could not be started');
+      }
+      return { agentId: agent.agentId, role: agent.role, sessionId: agent.sessionId ?? sessionId, status: agent.status };
+    },
+    disconnectAgentSession: async (request: DisconnectAgentSessionRequest): Promise<{ readonly disconnected: boolean }> => {
+      const existing = unwrap(await agentBusRepository.getAgent({ agentId: request.agentId }), 'Agent session could not be disconnected');
+      await agentRunnerSupervisor.stopAgent(request.agentId);
+      const result = existing.sessionId === null
+        ? await agentBusRepository.disconnectAgent({ agentId: request.agentId })
+        : await agentSessionManager.disconnect({ agentId: request.agentId, sessionId: existing.sessionId });
+      unwrap(result, 'Agent session could not be disconnected');
+      return { disconnected: true };
+    },
+  sendAgentMessage: async (request: SendAgentMessageRequest): Promise<AgentChatMessage> => {
+      const message = unwrap(await agentBusRepository.sendMessage(request), 'Agent message could not be sent');
+      return {
+        sequence: message.sequence,
+        messageId: message.messageId,
+        fromAgentId: message.fromAgentId,
+        toAgentId: message.toAgentId,
+        taskId: message.taskId ?? null,
+        type: message.type,
+        body: message.body,
+        createdAt: message.createdAt,
+      };
+    },
+    sendAgentRoomMessage: async (request: SendAgentRoomMessageRequest): Promise<AgentRoomChatMessage> => {
+      const room = await ensureDesktopAgentRoom(agentBusRepository);
+      if (room === null) throw new Error('Shared Agent Room is unavailable');
+      const message = unwrap(await agentBusRepository.sendRoomMessage({ roomId: room.roomId, target: request.target, type: request.type, body: request.body }), 'Agent room message could not be sent');
+      unwrap(await agentRunnerSupervisor.dispatch(message), 'Agent runner could not be activated');
+      return toIpcAgentRoomMessage(message);
     },
     getSystemMetrics: (): Promise<SystemMetrics> => systemMetricsSampler.sample(),
     listMcpServers: async (): Promise<readonly McpServerStatus[]> => {
@@ -785,9 +847,11 @@ export function createDesktopRuntime(dataPath: string, options: DesktopRuntimeOp
     close: async (): Promise<void> => {
       await tunnelController.stopOwned();
       logHub.stop();
+      await agentRunnerSupervisor.close();
       await mcpLifecycle.close();
       await extensionsService.close().catch(() => undefined);
       await workspaceIndex.close().catch(() => undefined);
+      await automaticBackupPromise;
       database.close();
     },
   };
@@ -888,6 +952,107 @@ async function buildGitSummary(
       worktreeStatus: entry.worktreeStatus,
     })),
   };
+}
+
+const WORKFLOW_ACTIVITY_WINDOW_MS = 10 * 60 * 1_000;
+
+async function buildAgentBusDashboard(repository: SqliteAgentBusRepository, inFlight: readonly InFlightToolCall[] = [], recentActivity: readonly WorkLogEntry[] = []): Promise<AgentBusDashboardSnapshot> {
+  const empty: AgentBusDashboardSnapshot = { room: null, roomMessages: [], agents: [], tasks: [], messages: [], locks: [], artifacts: [], events: [], latestMessageSequence: 0, latestEventSequence: 0 };
+  const snapshot = await repository.getSnapshot();
+  if (!snapshot.ok) return empty;
+  const [agents, tasks, messagesResult, events, locks, artifacts] = await Promise.all([
+    repository.listAgents({ limit: 50 }),
+    repository.listTasks({}),
+    repository.listMessages({ afterSequence: Math.max(0, snapshot.value.latestMessageSequence - 50), limit: 50 }),
+    repository.listEvents({ afterSequence: Math.max(0, snapshot.value.latestEventSequence - 50), limit: 50 }),
+    repository.listLocks({ limit: 50 }),
+    repository.listArtifacts({ limit: 50 }),
+  ]);
+  const room = await ensureDesktopAgentRoom(repository);
+  const roomSnapshot = room === null ? null : await repository.roomSnapshot({ roomId: room.roomId });
+  const roomMessagesResult = roomSnapshot?.ok === true
+    ? await repository.roomHistory({ roomId: roomSnapshot.value.room.roomId, afterSequence: Math.max(0, roomSnapshot.value.latestSequence - 50), limit: 50 })
+    : null;
+  const eventItems = events.ok ? events.value.events : [];
+  const messages = messagesResult.ok ? messagesResult.value.map((message) => ({
+    sequence: message.sequence,
+    messageId: message.messageId,
+    type: message.type,
+    fromAgentId: message.fromAgentId,
+    toAgentId: message.toAgentId,
+    taskId: message.taskId ?? null,
+    body: message.body,
+    createdAt: message.createdAt,
+  })) : [];
+  const activeToolBySession = new Map<string, string>();
+  for (const call of inFlight) {
+    if (call.sessionId !== undefined) activeToolBySession.set(call.sessionId, call.toolName);
+  }
+  const knownSessions = new Set(agents.ok ? agents.value.map((agent) => agent.sessionId).filter((sessionId): sessionId is string => sessionId !== undefined) : []);
+  const latestActivityBySession = new Map<string, WorkLogEntry>();
+  let latestUnboundActivity: WorkLogEntry | undefined;
+  for (const entry of recentActivity) {
+    if (entry.sessionId === null) continue;
+    const previous = latestActivityBySession.get(entry.sessionId);
+    if (previous === undefined || Date.parse(entry.timestamp) > Date.parse(previous.timestamp)) latestActivityBySession.set(entry.sessionId, entry);
+    if (!knownSessions.has(entry.sessionId) && (latestUnboundActivity === undefined || Date.parse(entry.timestamp) > Date.parse(latestUnboundActivity.timestamp))) latestUnboundActivity = entry;
+  }
+  const recentUnboundActivity = latestUnboundActivity !== undefined && Date.now() - Date.parse(latestUnboundActivity.timestamp) <= WORKFLOW_ACTIVITY_WINDOW_MS
+    ? latestUnboundActivity
+    : undefined;
+  const latestUnboundCall = inFlight
+    .filter((call) => call.sessionId !== undefined && !knownSessions.has(call.sessionId))
+    .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+    .at(-1);
+  return {
+    room: roomSnapshot?.ok === true ? {
+      roomId: roomSnapshot.value.room.roomId,
+      name: roomSnapshot.value.room.name,
+      latestSequence: roomSnapshot.value.latestSequence,
+      participants: roomSnapshot.value.participants.map((participant) => ({ agentId: participant.agentId, role: participant.role, status: participant.status, leftAt: participant.leftAt })),
+    } : null,
+    agents: agents.ok ? agents.value.map((agent) => {
+      const isMain = agent.role.trim().toLowerCase() === 'main' && agent.status !== 'offline' && agent.sessionId !== undefined;
+      const activity = agent.sessionId === undefined ? undefined : latestActivityBySession.get(agent.sessionId);
+      const activeToolName = agent.sessionId === undefined
+        ? null
+        : activeToolBySession.get(agent.sessionId) ?? (isMain ? latestUnboundCall?.toolName : undefined) ?? null;
+      const lastActivity = activity ?? (isMain ? recentUnboundActivity : undefined);
+      return { agentId: agent.agentId, role: agent.role, sessionId: agent.sessionId ?? null, status: agent.status, currentTaskId: agent.currentTaskId ?? null, activeToolName, lastActivityToolName: lastActivity?.toolName ?? null, lastActivityAt: lastActivity?.timestamp ?? null, lastHeartbeatAt: agent.lastHeartbeatAt };
+    }) : [],
+    tasks: tasks.ok ? tasks.value.slice(0, 50).map((task) => ({ taskId: task.taskId, title: task.title, status: task.status, ownerAgentId: task.ownerAgentId ?? null, dependencies: task.dependencies })) : [],
+    messages,
+    roomMessages: roomMessagesResult?.ok === true ? roomMessagesResult.value.map(toIpcAgentRoomMessage) : [],
+    locks: locks.ok ? locks.value.map((lock) => ({ resource: lock.resource, ownerAgentId: lock.ownerAgentId, taskId: lock.taskId, expiresAt: lock.expiresAt })) : [],
+    artifacts: artifacts.ok ? artifacts.value.map((artifact) => ({ artifactId: artifact.artifactId, taskId: artifact.taskId, type: artifact.type, pathOrReference: artifact.pathOrReference })) : [],
+    events: eventItems.map((event) => ({ sequence: event.sequence, eventType: event.eventType, agentId: event.agentId ?? null, taskId: event.taskId ?? null, createdAt: event.createdAt })),
+    latestMessageSequence: snapshot.value.latestMessageSequence,
+    latestEventSequence: snapshot.value.latestEventSequence,
+  };
+}
+
+const DESKTOP_AGENT_ROOM_ID = 'rvn-main-room';
+
+async function ensureDesktopAgentRoom(repository: SqliteAgentBusRepository): Promise<{ readonly roomId: string } | null> {
+  const agents = await repository.listAgents({ limit: 100 });
+  if (!agents.ok) return null;
+  const activeAgents = agents.value.filter((agent) => agent.status !== 'offline' && agent.sessionId !== undefined);
+  const existing = await repository.roomSnapshot({ roomId: DESKTOP_AGENT_ROOM_ID });
+  if (!existing.ok) {
+    if (activeAgents.length === 0 || existing.error.code !== 'ROOM_NOT_FOUND') return null;
+    const main = activeAgents.find((agent) => agent.role.trim().toLowerCase() === 'main') ?? activeAgents[0];
+    const created = await repository.createRoom({ roomId: DESKTOP_AGENT_ROOM_ID, name: 'RVN Shared Room', ...(main === undefined ? {} : { createdByAgentId: main.agentId }), participantAgentIds: activeAgents.map((agent) => agent.agentId) });
+    return created.ok ? { roomId: created.value.roomId } : null;
+  }
+  const current = new Set(existing.value.participants.map((participant) => participant.agentId));
+  for (const agent of activeAgents) {
+    if (!current.has(agent.agentId)) await repository.joinRoom({ roomId: DESKTOP_AGENT_ROOM_ID, agentId: agent.agentId });
+  }
+  return { roomId: DESKTOP_AGENT_ROOM_ID };
+}
+
+function toIpcAgentRoomMessage(message: { readonly sequence: number; readonly messageId: string; readonly roomId: string; readonly fromAgentId: string; readonly target: string; readonly targetAgentIds: readonly string[]; readonly type: AgentChatMessage['type']; readonly body: string; readonly createdAt: number; readonly acknowledgedAt?: number }): AgentRoomChatMessage {
+  return { sequence: message.sequence, messageId: message.messageId, roomId: message.roomId, fromAgentId: message.fromAgentId, target: message.target, targetAgentIds: message.targetAgentIds, type: message.type, body: message.body, createdAt: message.createdAt, acknowledgedAt: message.acknowledgedAt ?? null };
 }
 
 async function buildCodexSummary(codexDiscovery: CodexDiscovery): Promise<DashboardSnapshot['codex']> {

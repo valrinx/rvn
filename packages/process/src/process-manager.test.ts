@@ -35,6 +35,21 @@ describe('ProcessManager', () => {
     ]));
   });
 
+  it('closes stdin for non-interactive managed commands', async () => {
+    const manager = new ProcessManager();
+    const started = await manager.start({
+      executable: process.execPath,
+      args: ['-e', "process.stdin.once('end', () => process.stdout.write('stdin-closed'))"],
+      cwd: process.cwd(),
+      timeoutMs: 500,
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    await waitForState(manager, started.value.processId, 'exited');
+    expect(manager.status(started.value.processId)).toMatchObject({ ok: true, value: { state: 'exited' } });
+  });
+
   it('times out a running child and stops only an owned process handle', async () => {
     const manager = new ProcessManager();
     const started = await manager.start({

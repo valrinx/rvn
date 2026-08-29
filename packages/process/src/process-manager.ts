@@ -58,6 +58,10 @@ export class ProcessManager {
       cwd: spec.cwd,
       env: createSafeEnvironment(process.env),
       shell: false,
+      // Managed processes have no stdin API. Closing it prevents
+      // non-interactive commands (including Codex exec) from waiting forever
+      // for input that the desktop can never provide.
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       ...(invocation.value.windowsVerbatimArguments === undefined ? {} : { windowsVerbatimArguments: invocation.value.windowsVerbatimArguments }),
     });

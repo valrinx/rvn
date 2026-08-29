@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { appError, type CommandSpec } from '@rvn/domain';
+import { appError, type AppError, type CommandSpec } from '@rvn/domain';
 import { sanitizeException, type DiagnosticLogger, type FileActor } from '@rvn/application';
 import { CAPABILITY_ACTIVE_WORKSPACE_ROOT_METADATA_KEY } from '@rvn/capabilities';
 import { DefaultPermissionEngine, permissionProfiles, type PermissionProfile } from '@rvn/permissions';
@@ -29,6 +29,7 @@ import { sessionTools } from './tools/session-tools.js';
 import { searchTools } from './tools/search-tools.js';
 import { skillTools } from './tools/skill-tools.js';
 import { workspaceTools } from './tools/workspace-tools.js';
+import { agentBusTools } from './tools/agent-bus-tools.js';
 import type { McpApplicationServices, McpToolContext, McpToolDefinition } from './tools/tool-types.js';
 
 export type { McpApplicationServices } from './tools/tool-types.js';
@@ -39,6 +40,7 @@ export interface ToolRegistryOptions {
   readonly activity?: ActivitySink;
   readonly activityTracker?: ActivityTracker;
   readonly sessionId?: string;
+  readonly sessionTransport?: 'http' | 'stdio';
   readonly profileProvider?: () => PermissionProfile;
   /** Legacy compatibility. New callers should supply destructivePolicyProvider. */
   readonly allowAiDeleteProvider?: () => boolean;
@@ -84,6 +86,7 @@ type ApprovalPreparation =
 export class ToolRegistry {
   private readonly tools: readonly McpToolDefinition[];
   private readonly services: McpApplicationServices;
+  private readonly actor: FileActor;
   private readonly diagnostic: DiagnosticLogger | undefined;
   private readonly activity: ActivityTracker;
   private readonly schemaRegistry: ToolSchemaRegistry;
@@ -100,6 +103,7 @@ export class ToolRegistry {
 
   public constructor(services: McpApplicationServices, actor: FileActor, options: ToolRegistryOptions = {}) {
     this.services = services;
+    this.actor = actor;
     this.diagnostic = options.diagnostic;
     this.activity = options.activityTracker ?? new ActivityTracker(options.activity);
     this.sessionId = options.sessionId;
@@ -111,14 +115,16 @@ export class ToolRegistry {
     this.activityWorkspaceResolver = normalizeActivityWorkspaceResolver(services, actor);
     this.maxToolDurationMs = normalizeToolResponseBudget(options.maxToolDurationMs);
     const contextEconomy = new ContextEconomyRuntime();
-    const context: McpToolContext = { services, actor, contextEconomy };
+    const context: McpToolContext = { services, actor, contextEconomy, ...(options.sessionTransport === undefined ? {} : { sessionTransport: options.sessionTransport }) };
     const contextEngine = new ContextEngine(services, actor, contextEconomy);
     const filePageEngine = new FilePageEngine(services, actor);
     const incrementalVerifier = options.incrementalVerifier ?? new IncrementalVerifier();
     const workspace = workspaceTools(context);
     const files = fileTools(context);
+    const upgradeCatalogTools = upgradeTools(context).filter((tool) => services.agentBus === undefined || (tool.name !== 'task_create' && tool.name !== 'task_list'));
     const baseTools: readonly McpToolDefinition[] = [
       ...workspace,
+      ...(services.agentBus === undefined ? [] : agentBusTools(context)),
       ...files.slice(0, 2),
       ...searchTools(context),
       ...gitTools(context),
@@ -132,7 +138,7 @@ export class ToolRegistry {
       ...filePageTools(filePageEngine),
       ...workspaceIndexTools(context),
       ...sessionTools(context, incrementalVerifier),
-      ...upgradeTools(context),
+      ...upgradeCatalogTools,
     ];
     this.tools = [
       ...baseTools,
@@ -149,6 +155,69 @@ export class ToolRegistry {
   public listInFlight(): ReturnType<ActivityTracker['listInFlight']> { return this.activity.listInFlight(); }
   public listSchemas(): ReturnType<ToolSchemaRegistry['list']> { return this.schemaRegistry.list(); }
   public describeSchema(name: string): ReturnType<ToolSchemaRegistry['describe']> { return this.schemaRegistry.describe(name); }
+
+  private async enforceAgentRole(toolName: string, input: unknown): Promise<string | undefined> {
+    const bus = this.services.agentBus;
+    if (bus === undefined) return undefined;
+    let agent;
+    try {
+      const direct = await bus.getAgent({ agentId: this.actor.clientId });
+      if (direct.ok && (this.actor.sessionId === undefined || direct.value.sessionId === this.actor.sessionId)) {
+        agent = direct.value;
+      } else if (this.actor.sessionId !== undefined && bus.listAgents !== undefined) {
+        const listed = await bus.listAgents({ limit: 100 });
+        if (listed.ok) agent = listed.value.find((candidate) => candidate.sessionId === this.actor.sessionId);
+      }
+      if (agent === undefined) return undefined;
+    } catch {
+      return undefined;
+    }
+    const role = agent.role.trim().toLowerCase();
+    const value = isRecord(input) ? input : {};
+    if (role === 'research' && SOURCE_MUTATION_TOOLS.has(toolName) && !(toolName === 'git' && isReadOnlyGitInvocation(value))) return 'Research agents are read-only and cannot mutate workspace source';
+    if (role === 'research' && (toolName === 'worktree_allocate' || toolName === 'worktree_release') && value.materialize === true) return 'Research agents cannot materialize or remove Git worktrees';
+    if (toolName === 'git' && role !== 'main' && isIntegrationGitInvocation(value)) return 'Only Main may integrate branches or rewrite shared history';
+    if (role !== 'code' || !SOURCE_MUTATION_TOOLS.has(toolName)) return undefined;
+    if (toolName === 'git' && isIntegrationGitInvocation(value)) return 'Only Main may integrate branches or rewrite shared history';
+    const workspaceId = readExplicitWorkspaceId(value);
+    if (workspaceId === undefined || bus.listWorktrees === undefined) return 'Code agents must use an owned Agent Bus worktree for source mutation';
+    let records;
+    try {
+      const listed = await bus.listWorktrees({ workspaceId, agentId: agent.agentId, limit: 100 });
+      if (!listed.ok) return 'Code agent worktree ownership could not be verified';
+      records = listed.value.filter((record) => record.status === 'allocated');
+    } catch {
+      return 'Code agent worktree ownership could not be verified';
+    }
+    if (records.length === 0) return 'Code agents must use an owned Agent Bus worktree for source mutation';
+    const scope = await this.resolveActiveWorkspaceScope();
+    const root = scope?.workspaceId === workspaceId ? scope.rootPath : undefined;
+    const candidates = mutationPathCandidates(toolName, value);
+    if (candidates.length === 0) return 'Code agent source mutation must identify an owned worktree path';
+    return candidates.every((candidate) => records.some((record) => worktreeContains(root, record.worktreePath, candidate)))
+      ? undefined
+      : 'Code agent may mutate only files inside its owned Agent Bus worktree';
+  }
+
+  private async enforceAgentSessionBinding(toolName: string, input: unknown): Promise<AppError | undefined> {
+    const bus = this.services.agentBus;
+    const sessionId = this.actor.sessionId;
+    if (bus === undefined || sessionId === undefined || toolName === 'agent_register') return undefined;
+    const agentIds = sessionBoundAgentIds(toolName, input);
+    if (agentIds.length === 0) return undefined;
+    for (const agentId of agentIds) {
+      try {
+        const result = await bus.getAgent({ agentId });
+        if (!result.ok) continue;
+        if (result.value.sessionId !== sessionId) {
+          return appError('AGENT_SESSION_MISMATCH', `Agent "${agentId}" is bound to a different MCP protocol session`);
+        }
+      } catch {
+        return appError('PERMISSION_DENIED', 'Agent session binding could not be verified', true);
+      }
+    }
+    return undefined;
+  }
 
   public async invoke(name: string, input: unknown, traceContext?: TraceContext, parentSignal?: AbortSignal): Promise<McpToolResponse> {
     const activityWorkspaceId = await this.resolveActivityWorkspaceId(name, input);
@@ -172,6 +241,18 @@ export class ToolRegistry {
       if (prohibitedReason !== undefined) {
         const response = mapError(appError('PERMISSION_DENIED', prohibitedReason));
         await this.activity.end(callId, 'PERMISSION_DENIED', Date.now() - started, prohibitedReason);
+        return response;
+      }
+      const sessionViolation = await this.enforceAgentSessionBinding(tool.name, parsed.value);
+      if (sessionViolation !== undefined) {
+        const response = mapError(sessionViolation);
+        await this.activity.end(callId, sessionViolation.code, Date.now() - started, sessionViolation.message);
+        return response;
+      }
+      const roleViolation = await this.enforceAgentRole(tool.name, parsed.value);
+      if (roleViolation !== undefined) {
+        const response = mapError(appError('PERMISSION_DENIED', roleViolation));
+        await this.activity.end(callId, 'PERMISSION_DENIED', Date.now() - started, roleViolation);
         return response;
       }
       let mutationDecision = inspectMutationOperation(tool.name, parsed.value, tool.permission);
@@ -444,6 +525,7 @@ function normalizeActiveWorkspaceScopeProvider(options: ActiveWorkspaceScopeOpti
 
 const NATIVE_ACTIVE_SCOPE_TOOLS = new Set(['office', 'audio', 'screen_record']);
 const COMMAND_EXECUTION_TOOLS = new Set(['shell', 'wsl_exec', 'process_start']);
+const SOURCE_MUTATION_TOOLS = new Set(['write_file', 'apply_patch', 'edit_file', 'move_file', 'copy_file', 'delete_file', 'restore_deleted_file', 'restore_recovery_item', 'restore_checkpoint', 'git', 'shell', 'wsl_exec', 'process_start', 'process_stop', 'codex_run', 'codex_stop', 'office', 'office_ppt', 'docx_merge', 'git_worktree_spawn', 'git_worktree_remove', 'self_heal_apply']);
 type CommandScopeBinding = { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly message: string };
 function bindCommandExecutionToActiveWorkspace(toolName: string, input: unknown, activeWorkspaceScope: WorkspaceScope | null): CommandScopeBinding {
   const commandTool = toolName === 'shell' || toolName === 'wsl_exec' || toolName === 'process_start';
@@ -488,6 +570,47 @@ function relativePathStaysWithin(pathApi: typeof path.win32, relative: string): 
   if (pathApi.isAbsolute(relative)) return false;
   const [firstSegment] = relative.split(pathApi.sep);
   return firstSegment !== '..';
+}
+
+function isIntegrationGitInvocation(input: Readonly<Record<string, unknown>>): boolean {
+  if (!Array.isArray(input.args)) return false;
+  const args = input.args.filter((value): value is string => typeof value === 'string');
+  const command = args[0]?.toLowerCase();
+  return command === 'merge' || command === 'cherry-pick' || command === 'rebase' || (command === 'reset' && args.some((arg) => arg.toLowerCase() === '--hard'));
+}
+
+function isReadOnlyGitInvocation(input: Readonly<Record<string, unknown>>): boolean {
+  if (!Array.isArray(input.args)) return false;
+  const args = input.args.filter((value): value is string => typeof value === 'string');
+  const command = args[0]?.toLowerCase();
+  return command !== undefined && ['status', 'diff', 'log', 'show', 'branch', 'rev-parse', 'ls-files', 'ls-tree', 'cat-file', 'for-each-ref'].includes(command);
+}
+
+function mutationPathCandidates(toolName: string, input: Readonly<Record<string, unknown>>): string[] {
+  const candidates: string[] = [];
+  for (const key of ['path', 'sourcePath', 'destinationPath', 'cwd', 'worktreePath'] as const) {
+    const value = readTrimmedString(input[key]);
+    if (value !== undefined) candidates.push(value);
+  }
+  if (toolName === 'apply_patch' && Array.isArray(input.files)) {
+    for (const entry of input.files) {
+      if (isRecord(entry)) {
+        const value = readTrimmedString(entry.path);
+        if (value !== undefined) candidates.push(value);
+      }
+    }
+  }
+  return candidates;
+}
+
+function worktreeContains(root: string | undefined, worktreePath: string, candidate: string): boolean {
+  const candidateApi = path.win32.isAbsolute(candidate) || (root !== undefined && path.win32.isAbsolute(root)) ? path.win32 : path.posix;
+  const normalizedRoot = root === undefined ? undefined : candidateApi.resolve(root);
+  const worktreeRoot = normalizedRoot === undefined ? candidateApi.resolve(worktreePath) : candidateApi.resolve(normalizedRoot, worktreePath);
+  const target = candidateApi.isAbsolute(candidate)
+    ? candidateApi.resolve(candidate)
+    : candidateApi.resolve(normalizedRoot ?? '.', candidate);
+  return scopePathContains(candidateApi, worktreeRoot, target);
 }
 
 function summarizeMutationForApproval(toolName: string, input: unknown, activeWorkspaceScope: WorkspaceScope | null): string {
@@ -599,6 +722,38 @@ function prohibitedInvocationReason(toolName: string, input: unknown): string | 
     if (executable !== undefined && args !== undefined) return prohibitedAgentCommandReason(executable, args);
   }
   return undefined;
+}
+
+const SESSION_BOUND_AGENT_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  agent_heartbeat: ['agent_id'],
+  task_create: ['agent_id'],
+  task_claim: ['agent_id'],
+  task_update: ['agent_id'],
+  task_complete: ['agent_id'],
+  message_send: ['from_agent_id'],
+  message_inbox: ['agent_id'],
+  message_ack: ['agent_id'],
+  lock_acquire: ['agent_id'],
+  lock_release: ['agent_id'],
+  artifact_add: ['agent_id'],
+  worktree_allocate: ['agent_id'],
+  worktree_release: ['agent_id'],
+  room_create: ['created_by_agent_id'],
+  room_join: ['agent_id'],
+  room_leave: ['agent_id'],
+  room_send: ['from_agent_id'],
+  room_inbox: ['agent_id'],
+  room_ack: ['agent_id'],
+};
+
+function sessionBoundAgentIds(toolName: string, input: unknown): readonly string[] {
+  if (!isRecord(input)) return [];
+  const fields = SESSION_BOUND_AGENT_FIELDS[toolName];
+  if (fields === undefined) return [];
+  return fields.flatMap((field) => {
+    const value = input[field];
+    return typeof value === 'string' && value.trim().length > 0 ? [value] : [];
+  });
 }
 
 const LOCAL_MUTATION_TOOLS = new Set(['write_file', 'apply_patch', 'edit_file', 'move_file', 'copy_file', 'delete_file', 'restore_deleted_file', 'restore_recovery_item', 'restore_checkpoint', 'git', 'shell', 'wsl_exec', 'process_start', 'process_stop', 'codex_run', 'codex_stop', 'office', 'office_ppt', 'docx_merge', 'git_worktree_spawn', 'git_worktree_remove', 'self_heal_apply']);

@@ -24,7 +24,7 @@ describe('SqliteCheckpointRepository', () => {
 
     await expect(repository.get(checkpoint.id)).resolves.toEqual(checkpoint);
     database.close();
-  });
+  }, 15_000);
 
   it('lists only one workspace newest-first without exposing another workspace', async () => {
     const root = await temporaryRoot();

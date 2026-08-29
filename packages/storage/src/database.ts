@@ -5,6 +5,13 @@ import { AUDIT_MIGRATION_SQL } from './migrations/audit-migration.js';
 import { AUDIT_SCOPE_MIGRATION_SQL } from './migrations/audit-scope-migration.js';
 import { CHECKPOINT_MIGRATION_SQL } from './migrations/checkpoint-migration.js';
 import { WORKSPACE_ARCHIVE_MIGRATION_SQL } from './migrations/workspace-archive-migration.js';
+import { AGENT_BUS_MIGRATION_SQL } from './migrations/agent-bus-migration.js';
+import { AGENT_BUS_EVENTS_MIGRATION_SQL } from './migrations/agent-bus-events-migration.js';
+import { AGENT_BUS_LOCKS_MIGRATION_SQL } from './migrations/agent-bus-locks-migration.js';
+import { AGENT_BUS_ARTIFACTS_MIGRATION_SQL } from './migrations/agent-bus-artifacts-migration.js';
+import { AGENT_BUS_WORKTREES_MIGRATION_SQL } from './migrations/agent-bus-worktrees-migration.js';
+import { AGENT_BUS_ROOMS_MIGRATION_SQL } from './migrations/agent-bus-rooms-migration.js';
+import { AGENT_BUS_RUNNER_MIGRATION_SQL } from './migrations/agent-bus-runner-migration.js';
 
 export interface SqliteDatabaseOptions {
   readonly backupDirectory?: string;
@@ -47,6 +54,13 @@ export class SqliteDatabase {
     this.applyMigration({ id: '003_checkpoints', sql: CHECKPOINT_MIGRATION_SQL });
     this.applyMigration({ id: '004_audit_scope', sql: AUDIT_SCOPE_MIGRATION_SQL });
     this.applyMigration({ id: '005_workspace_archive', sql: WORKSPACE_ARCHIVE_MIGRATION_SQL });
+    this.applyMigration({ id: '006_agent_bus', sql: AGENT_BUS_MIGRATION_SQL });
+    this.applyMigration({ id: '007_agent_bus_events', sql: AGENT_BUS_EVENTS_MIGRATION_SQL });
+    this.applyMigration({ id: '008_agent_bus_locks', sql: AGENT_BUS_LOCKS_MIGRATION_SQL });
+    this.applyMigration({ id: '009_agent_bus_artifacts', sql: AGENT_BUS_ARTIFACTS_MIGRATION_SQL });
+    this.applyMigration({ id: '010_agent_bus_worktrees', sql: AGENT_BUS_WORKTREES_MIGRATION_SQL });
+    this.applyMigration({ id: '011_agent_bus_rooms', sql: AGENT_BUS_ROOMS_MIGRATION_SQL });
+    this.applyMigration({ id: '012_agent_bus_runner', sql: AGENT_BUS_RUNNER_MIGRATION_SQL });
   }
 
   public applyMigration(migration: Migration): void {

@@ -132,6 +132,43 @@ export function inspectMutationOperation(
       return opaque(`${toolName} can execute or interrupt effects that cannot be proven at the gateway`);
     case 'mcp_call':
       return inspectMcpCall(value);
+    case 'agent_register':
+    case 'agent_heartbeat':
+    case 'task_create':
+    case 'task_claim':
+    case 'task_update':
+    case 'task_complete':
+    case 'message_send':
+    case 'message_ack':
+    case 'lock_acquire':
+    case 'lock_release':
+    case 'artifact_add':
+    case 'worktree_allocate':
+    case 'worktree_release':
+    case 'room_create':
+    case 'room_join':
+    case 'room_leave':
+    case 'room_send':
+    case 'room_ack':
+      return value.materialize === true
+        ? opaque(`${toolName} materializes a Git worktree and changes repository state`)
+        : boundedWrite('Agent Bus worktree ownership state is persisted locally without mutating workspace files');
+    case 'task_list':
+    case 'agent_get':
+    case 'agent_list':
+    case 'task_get':
+    case 'message_inbox':
+    case 'event_list':
+    case 'bus_snapshot':
+    case 'lock_list':
+    case 'artifact_get':
+    case 'artifact_list':
+    case 'worktree_list':
+    case 'room_inbox':
+    case 'room_history':
+    case 'room_participants':
+    case 'room_snapshot':
+      return read('Agent Bus coordination inspection');
     case 'web_fetch':
       return inspectWebFetch(value);
     case 'scheduler':

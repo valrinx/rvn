@@ -28,9 +28,9 @@
 
 > Windows อาจแสดง SmartScreen หาก release ยังไม่ได้ลงนามด้วย certificate ที่ Windows เชื่อถือ ตรวจชื่อไฟล์และ SHA-256 ใน release ก่อนเปิดเสมอ
 
-## Current version: v5.0.0
+## Current version: v5.0.1
 
-The v5.0.0 release target and runtime contract contain **218 configurable tools**, with **212 advertised by default** because the six `codex_*` delegation tools are opt-in. The Windows installer for the current version is `rvn-Setup-5.0.0.exe`.
+The v5.0.1 release target and runtime contract contain **218 configurable tools**, with **212 advertised by default** because the six `codex_*` delegation tools are opt-in. The Windows installer for the current version is `rvn-Setup-5.0.1.exe`.
 
 ## RVN คืออะไร
 

@@ -1,5 +1,5 @@
 export const APP_NAME = 'rvn';
-export const APP_VERSION = '5.0.0';
+export const APP_VERSION = '5.0.1';
 
 export const ipcChannels = {
   listWorkspaces: 'rvn:list-workspaces',
@@ -8,6 +8,10 @@ export const ipcChannels = {
   setWorkspaceArchived: 'rvn:set-workspace-archived',
   deleteWorkspace: 'rvn:delete-workspace',
   getDashboard: 'rvn:get-dashboard',
+  createAgentSession: 'rvn:create-agent-session',
+  disconnectAgentSession: 'rvn:disconnect-agent-session',
+  sendAgentMessage: 'rvn:send-agent-message',
+  sendAgentRoomMessage: 'rvn:send-agent-room-message',
   listMcpServers: 'rvn:list-mcp-servers',
   getSystemMetrics: 'rvn:get-system-metrics',
   openSelectedWorkspaceFolder: 'rvn:open-selected-workspace-folder',
@@ -338,6 +342,88 @@ export interface DashboardSnapshot {
   readonly tunnel: TunnelStatus;
   readonly settings: UserSettings;
   readonly appVersion: string;
+  readonly agentBus: AgentBusDashboardSnapshot;
+}
+
+export interface AgentBusDashboardSnapshot {
+  readonly room?: AgentRoomSummary | null;
+  readonly agents: readonly {
+    readonly agentId: string;
+    readonly role: string;
+    readonly sessionId: string | null;
+    readonly status: string;
+    readonly currentTaskId: string | null;
+    /** The MCP tool currently executing in this protocol session, when any. */
+    readonly activeToolName?: string | null;
+    /** Most recent MCP tool observed for this agent/session, when known. */
+    readonly lastActivityToolName?: string | null;
+    readonly lastActivityAt?: string | null;
+    readonly lastHeartbeatAt: number;
+  }[];
+  readonly tasks: readonly {
+    readonly taskId: string;
+    readonly title: string;
+    readonly status: string;
+    readonly ownerAgentId: string | null;
+    readonly dependencies: readonly string[];
+  }[];
+  readonly messages: readonly {
+    readonly sequence: number;
+    readonly messageId?: string;
+    readonly type: string;
+    readonly fromAgentId: string;
+    readonly toAgentId: string;
+    readonly taskId: string | null;
+    readonly body: string;
+    readonly createdAt: number;
+  }[];
+  readonly roomMessages?: readonly AgentRoomChatMessage[];
+  readonly locks: readonly {
+    readonly resource: string;
+    readonly ownerAgentId: string;
+    readonly taskId: string | null;
+    readonly expiresAt: number;
+  }[];
+  readonly artifacts: readonly {
+    readonly artifactId: string;
+    readonly taskId: string | null;
+    readonly type: string;
+    readonly pathOrReference: string;
+  }[];
+  readonly events: readonly {
+    readonly sequence: number;
+    readonly eventType: string;
+    readonly agentId: string | null;
+    readonly taskId: string | null;
+    readonly createdAt: number;
+  }[];
+  readonly latestMessageSequence: number;
+  readonly latestEventSequence: number;
+}
+
+export interface AgentRoomSummary {
+  readonly roomId: string;
+  readonly name: string;
+  readonly latestSequence: number;
+  readonly participants: readonly {
+    readonly agentId: string;
+    readonly role: string;
+    readonly status: string;
+    readonly leftAt: number | null;
+  }[];
+}
+
+export interface AgentRoomChatMessage {
+  readonly sequence: number;
+  readonly messageId: string;
+  readonly roomId: string;
+  readonly fromAgentId: string;
+  readonly target: string;
+  readonly targetAgentIds: readonly string[];
+  readonly type: AgentChatMessageType;
+  readonly body: string;
+  readonly createdAt: number;
+  readonly acknowledgedAt: number | null;
 }
 
 export interface SystemMetrics {
@@ -472,6 +558,49 @@ export interface ConfigureTunnelProfileRequest {
   readonly tunnelId: string;
 }
 
+export type AgentChatMessageType = 'TASK' | 'UPDATE' | 'RESULT' | 'BLOCKER' | 'QUESTION' | 'REVIEW' | 'ACK' | 'CANCEL';
+
+export interface SendAgentMessageRequest {
+  readonly fromAgentId: string;
+  readonly toAgentId: string;
+  readonly type: AgentChatMessageType;
+  readonly body: string;
+  readonly taskId?: string;
+}
+
+export interface SendAgentRoomMessageRequest {
+  readonly target: string;
+  readonly type: AgentChatMessageType;
+  readonly body: string;
+}
+
+export interface AgentChatMessage {
+  readonly sequence: number;
+  readonly messageId: string;
+  readonly fromAgentId: string;
+  readonly toAgentId: string;
+  readonly taskId: string | null;
+  readonly type: AgentChatMessageType;
+  readonly body: string;
+  readonly createdAt: number;
+}
+
+export interface CreateAgentSessionRequest {
+  readonly agentId: string;
+  readonly role: string;
+}
+
+export interface AgentSessionSummary {
+  readonly agentId: string;
+  readonly role: string;
+  readonly sessionId: string;
+  readonly status: 'online' | 'busy' | 'idle' | 'blocked' | 'offline';
+}
+
+export interface DisconnectAgentSessionRequest {
+  readonly agentId: string;
+}
+
 export interface McpConnectionStatus {
   readonly running: boolean;
   readonly url: string | null;
@@ -491,6 +620,10 @@ export interface IpcRequestMap {
   readonly [ipcChannels.setWorkspaceArchived]: SetWorkspaceArchivedRequest;
   readonly [ipcChannels.deleteWorkspace]: DeleteWorkspaceRequest;
   readonly [ipcChannels.getDashboard]: undefined;
+  readonly [ipcChannels.createAgentSession]: CreateAgentSessionRequest;
+  readonly [ipcChannels.disconnectAgentSession]: DisconnectAgentSessionRequest;
+  readonly [ipcChannels.sendAgentMessage]: SendAgentMessageRequest;
+  readonly [ipcChannels.sendAgentRoomMessage]: SendAgentRoomMessageRequest;
   readonly [ipcChannels.listMcpServers]: undefined;
   readonly [ipcChannels.getSystemMetrics]: undefined;
   readonly [ipcChannels.openSelectedWorkspaceFolder]: undefined;
@@ -537,6 +670,10 @@ export interface IpcResponseMap {
   readonly [ipcChannels.setWorkspaceArchived]: WorkspaceSummary;
   readonly [ipcChannels.deleteWorkspace]: { readonly deleted: boolean; readonly workspaceId: string; readonly rootPath: string; readonly backupId: string };
   readonly [ipcChannels.getDashboard]: DashboardSnapshot;
+  readonly [ipcChannels.createAgentSession]: AgentSessionSummary;
+  readonly [ipcChannels.disconnectAgentSession]: { readonly disconnected: boolean };
+  readonly [ipcChannels.sendAgentMessage]: AgentChatMessage;
+  readonly [ipcChannels.sendAgentRoomMessage]: AgentRoomChatMessage;
   readonly [ipcChannels.listMcpServers]: readonly McpServerStatus[];
   readonly [ipcChannels.getSystemMetrics]: SystemMetrics;
   readonly [ipcChannels.openSelectedWorkspaceFolder]: { readonly opened: boolean };
@@ -583,6 +720,10 @@ export interface RvnApi {
   setWorkspaceArchived(request: SetWorkspaceArchivedRequest): Promise<IpcResponseMap[typeof ipcChannels.setWorkspaceArchived]>;
   deleteWorkspace(request: DeleteWorkspaceRequest): Promise<IpcResponseMap[typeof ipcChannels.deleteWorkspace]>;
   getDashboard(): Promise<IpcResponseMap[typeof ipcChannels.getDashboard]>;
+  createAgentSession(request: CreateAgentSessionRequest): Promise<IpcResponseMap[typeof ipcChannels.createAgentSession]>;
+  disconnectAgentSession(request: DisconnectAgentSessionRequest): Promise<IpcResponseMap[typeof ipcChannels.disconnectAgentSession]>;
+  sendAgentMessage(request: SendAgentMessageRequest): Promise<IpcResponseMap[typeof ipcChannels.sendAgentMessage]>;
+  sendAgentRoomMessage(request: SendAgentRoomMessageRequest): Promise<IpcResponseMap[typeof ipcChannels.sendAgentRoomMessage]>;
   listMcpServers(): Promise<IpcResponseMap[typeof ipcChannels.listMcpServers]>;
   getSystemMetrics(): Promise<IpcResponseMap[typeof ipcChannels.getSystemMetrics]>;
   openSelectedWorkspaceFolder(): Promise<IpcResponseMap[typeof ipcChannels.openSelectedWorkspaceFolder]>;

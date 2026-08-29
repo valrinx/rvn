@@ -8,11 +8,11 @@ const desktopRoot = path.resolve(import.meta.dirname, '..', '..', 'apps', 'deskt
 const repositoryRoot = path.resolve(desktopRoot, '..', '..');
 
 describe('Windows desktop packaging', () => {
-  it('pins the product release to v5.0.0', async () => {
+  it('pins the product release to v5.0.1', async () => {
     const rootPackage = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8')) as { version?: unknown };
     const desktopPackage = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf8')) as { version?: unknown };
-    expect(rootPackage.version).toBe('5.0.0');
-    expect(desktopPackage.version).toBe('5.0.0');
+    expect(rootPackage.version).toBe('5.0.1');
+    expect(desktopPackage.version).toBe('5.0.1');
   });
 
   it('publishes complete desktop application metadata', async () => {
@@ -21,6 +21,7 @@ describe('Windows desktop packaging', () => {
       author?: unknown;
       homepage?: unknown;
       repository?: { type?: unknown; url?: unknown };
+      scripts?: { 'package:windows'?: unknown };
     };
 
     expect(desktopPackage.description).toBe('Windows-first local AI-agent runtime and MCP gateway with 218 configurable tools.');
@@ -32,6 +33,9 @@ describe('Windows desktop packaging', () => {
   it('declares rvn x64 NSIS packaging and built runtime bundles', async () => {
     const configPath = path.join(desktopRoot, 'electron-builder.yml');
     const config = await readFile(configPath, 'utf8');
+    const desktopPackage = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf8')) as {
+      scripts?: { 'package:windows'?: unknown };
+    };
 
     expect(config).toContain('productName: rvn');
     expect(config).toContain('output: dist/installers');
@@ -40,6 +44,7 @@ describe('Windows desktop packaging', () => {
     expect(config).toContain('icon: build/icon.ico');
     expect(config).toContain('signAndEditExecutable: true');
     expect(config).not.toContain('signAndEditExecutable: false');
+    expect(desktopPackage.scripts?.['package:windows']).toContain('--config.win.signAndEditExecutable=false');
     expect(config).toContain('createStartMenuShortcut: false');
     expect(config).not.toMatch(/[A-Z]:\\Users\\[^\r\n]+/i);
     const installerScript = await readFile(path.join(desktopRoot, 'build', 'installer.nsh'), 'utf8');

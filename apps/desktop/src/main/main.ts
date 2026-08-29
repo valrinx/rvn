@@ -8,11 +8,16 @@ import {
   ipcChannels,
   pushChannels,
   type AddWorkspaceRequest,
+  type AgentSessionSummary,
+  type AgentChatMessage,
+  type AgentRoomChatMessage,
   type BackupSummary,
   type ClearLogBufferRequest,
   type ClearWorkLogRequest,
   type ConfigureTunnelProfileRequest,
   type DeleteWorkspaceRequest,
+  type DisconnectAgentSessionRequest,
+  type CreateAgentSessionRequest,
   type DashboardSnapshot,
   type DestructiveDeletePolicy,
   type DoctorReport,
@@ -27,6 +32,8 @@ import {
   type RestoreRecoveryItemRequest,
   type PermissionProfileName,
   type SaveTunnelApiKeyRequest,
+  type SendAgentMessageRequest,
+  type SendAgentRoomMessageRequest,
   type ScheduleRestoreBackupRequest,
   type SelectWorkspaceRequest,
   type SetWorkspaceArchivedRequest,
@@ -70,6 +77,10 @@ export interface DesktopIpcServices {
   setWorkspaceArchived(request: SetWorkspaceArchivedRequest): Promise<WorkspaceSummary>;
   deleteWorkspace(request: DeleteWorkspaceRequest): Promise<{ readonly deleted: boolean; readonly workspaceId: string; readonly rootPath: string }>;
   getDashboard(): Promise<DashboardSnapshot>;
+  createAgentSession(request: CreateAgentSessionRequest): Promise<AgentSessionSummary>;
+  disconnectAgentSession(request: DisconnectAgentSessionRequest): Promise<{ readonly disconnected: boolean }>;
+  sendAgentMessage(request: SendAgentMessageRequest): Promise<AgentChatMessage>;
+  sendAgentRoomMessage(request: SendAgentRoomMessageRequest): Promise<AgentRoomChatMessage>;
   listMcpServers(): Promise<readonly McpServerStatus[]>;
   getSystemMetrics(): Promise<SystemMetrics>;
   setPermissionProfile(request: SetPermissionProfileRequest): Promise<{ readonly profile: PermissionProfileName }>;
@@ -193,7 +204,20 @@ const defaultDesktopServices: DesktopIpcServices = {
     tunnel: emptyTunnel,
     settings: defaultUserSettings,
     appVersion: APP_VERSION,
+    agentBus: { agents: [], tasks: [], messages: [], locks: [], artifacts: [], events: [], latestMessageSequence: 0, latestEventSequence: 0 },
   }),
+  createAgentSession: async (): Promise<AgentSessionSummary> => {
+    throw new Error('Desktop services are not configured');
+  },
+  disconnectAgentSession: async (): Promise<{ readonly disconnected: boolean }> => {
+    throw new Error('Desktop services are not configured');
+  },
+  sendAgentMessage: async (): Promise<AgentChatMessage> => {
+    throw new Error('Desktop services are not configured');
+  },
+  sendAgentRoomMessage: async (): Promise<AgentRoomChatMessage> => {
+    throw new Error('Desktop services are not configured');
+  },
   getSystemMetrics: async (): Promise<SystemMetrics> => ({
     cpuUsagePercent: null,
     memoryUsagePercent: null,
@@ -304,6 +328,22 @@ export function registerIpcHandlers(
     assertTrustedSender(event, getMainWindow());
     assertNoPayload(payload);
     return services.getDashboard();
+  });
+  ipcMain.handle(ipcChannels.createAgentSession, async (event, payload: unknown) => {
+    assertTrustedSender(event, getMainWindow());
+    return services.createAgentSession(parseCreateAgentSessionRequest(payload));
+  });
+  ipcMain.handle(ipcChannels.disconnectAgentSession, async (event, payload: unknown) => {
+    assertTrustedSender(event, getMainWindow());
+    return services.disconnectAgentSession(parseDisconnectAgentSessionRequest(payload));
+  });
+  ipcMain.handle(ipcChannels.sendAgentMessage, async (event, payload: unknown) => {
+    assertTrustedSender(event, getMainWindow());
+    return services.sendAgentMessage(parseSendAgentMessageRequest(payload));
+  });
+  ipcMain.handle(ipcChannels.sendAgentRoomMessage, async (event, payload: unknown) => {
+    assertTrustedSender(event, getMainWindow());
+    return services.sendAgentRoomMessage(parseSendAgentRoomMessageRequest(payload));
   });
   ipcMain.handle(ipcChannels.listMcpServers, async (event, payload: unknown) => {
     assertTrustedSender(event, getMainWindow());
@@ -501,6 +541,46 @@ function assertNoPayload(payload: unknown): void {
 function parseAddWorkspaceRequest(payload: unknown): AddWorkspaceRequest {
   if (!isRecord(payload)) throw new Error('Invalid IPC payload');
   return { rootPath: nonEmptyString(payload.rootPath, 'rootPath') };
+}
+
+function parseCreateAgentSessionRequest(payload: unknown): CreateAgentSessionRequest {
+  if (!isRecord(payload)) throw new Error('Invalid IPC payload');
+  return {
+    agentId: boundedString(payload.agentId, 'agentId', 128),
+    role: boundedString(payload.role, 'role', 64),
+  };
+}
+
+function parseDisconnectAgentSessionRequest(payload: unknown): DisconnectAgentSessionRequest {
+  if (!isRecord(payload)) throw new Error('Invalid IPC payload');
+  return { agentId: boundedString(payload.agentId, 'agentId', 128) };
+}
+
+function parseSendAgentMessageRequest(payload: unknown): SendAgentMessageRequest {
+  if (!isRecord(payload)) throw new Error('Invalid IPC payload');
+  const fromAgentId = boundedString(payload.fromAgentId, 'fromAgentId', 128);
+  const toAgentId = boundedString(payload.toAgentId, 'toAgentId', 128);
+  const body = boundedString(payload.body, 'body', 8_192);
+  if (body.trim().length === 0) throw new Error('Invalid IPC payload: body');
+  const type = payload.type;
+  if (type !== 'TASK' && type !== 'UPDATE' && type !== 'RESULT' && type !== 'BLOCKER' && type !== 'QUESTION' && type !== 'REVIEW' && type !== 'ACK' && type !== 'CANCEL') {
+    throw new Error('Invalid IPC payload: type');
+  }
+  const taskId = payload.taskId === undefined ? undefined : boundedString(payload.taskId, 'taskId', 128);
+  return { fromAgentId, toAgentId, type, body, ...(taskId === undefined ? {} : { taskId }) };
+}
+
+function parseSendAgentRoomMessageRequest(payload: unknown): SendAgentRoomMessageRequest {
+  if (!isRecord(payload)) throw new Error('Invalid IPC payload');
+  const target = boundedString(payload.target, 'target', 128);
+  if (!/^@[A-Za-z0-9._-]+$/.test(target)) throw new Error('Invalid IPC payload: target');
+  const body = boundedString(payload.body, 'body', 32_768);
+  if (body.trim().length === 0) throw new Error('Invalid IPC payload: body');
+  const type = payload.type;
+  if (type !== 'TASK' && type !== 'UPDATE' && type !== 'RESULT' && type !== 'BLOCKER' && type !== 'QUESTION' && type !== 'REVIEW' && type !== 'ACK' && type !== 'CANCEL') {
+    throw new Error('Invalid IPC payload: type');
+  }
+  return { target, type, body };
 }
 
 function parseSelectWorkspaceRequest(payload: unknown): SelectWorkspaceRequest {
@@ -795,6 +875,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function nonEmptyString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`Invalid IPC payload: ${field}`);
   return value;
+}
+
+function boundedString(value: unknown, field: string, maxLength: number): string {
+  const result = nonEmptyString(value, field).trim();
+  if (result.length > maxLength) throw new Error(`Invalid IPC payload: ${field}`);
+  return result;
 }
 
 function isNonEmptyString(value: unknown): value is string {

@@ -1,6 +1,6 @@
 {
   "name": "@rvn/mcp-server",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -19,6 +19,7 @@
     "@rvn/extensions": "workspace:*",
     "@rvn/permissions": "workspace:*",
     "@rvn/search": "workspace:*",
+    "@rvn/storage": "workspace:*",
     "@rvn/shared": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "4.2.0"

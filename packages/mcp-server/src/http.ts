@@ -194,6 +194,7 @@ function createSessionfulMcpHandler(options: McpHttpServerOptions): McpHttpHandl
       },
       onsessionclosed(sessionId): void {
         if (sessions.get(sessionId)?.transport === transport) sessions.delete(sessionId);
+        void options.services.agentSessions?.disconnectSession(createProtocolHttpRequestScope(sessionId).sessionId);
       },
     });
 
@@ -246,6 +247,7 @@ async function handleRequest(
   handler: McpHttpHandler,
   originPolicy: OriginPolicy,
   maxBodyBytes: number,
+  onSessionClosed?: (protocolSessionId: string) => Promise<void>,
 ): Promise<void> {
   const requestedPath = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
   if (requestedPath !== '/mcp') {
@@ -268,6 +270,8 @@ async function handleRequest(
   }
 
   await writeFetchResponse(response, await handler.fetch(fetchRequest));
+  const sessionId = request.headers['mcp-session-id'];
+  if (request.method === 'DELETE' && typeof sessionId === 'string' && sessionId.trim().length > 0) await onSessionClosed?.(sessionId);
 }
 
 function listen(server: HttpServer, port: number): Promise<McpHttpServerAddress> {
@@ -299,7 +303,9 @@ export async function startMcpHttp(options: McpHttpServerOptions): Promise<McpHt
   const handler = createSessionfulMcpHandler(options);
   const originPolicy = options.originPolicy ?? createOriginPolicy();
   const server = createServer((request, response) => {
-    void handleRequest(request, response, handler, originPolicy, maxBodyBytes).catch((error: unknown) => {
+    void handleRequest(request, response, handler, originPolicy, maxBodyBytes, async (protocolSessionId) => {
+      await options.services.agentSessions?.disconnectSession(createProtocolHttpRequestScope(protocolSessionId).sessionId);
+    }).catch((error: unknown) => {
       writeDiagnostic(error instanceof Error ? error : new Error('Unhandled MCP HTTP request error'));
       if (!response.headersSent) sendStatus(response, 500, 'Internal server error');
       else response.destroy();

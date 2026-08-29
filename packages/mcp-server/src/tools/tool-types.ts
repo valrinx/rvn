@@ -22,6 +22,8 @@ import type {
 } from '@rvn/application';
 import type { z } from 'zod';
 import type { ContextEconomyRuntime } from '../context-economy.js';
+import type { AgentBusRepository } from '@rvn/storage';
+import type { AgentSessionManager, AgentSessionTransport } from '../agent-session-manager.js';
 
 export interface WorkspaceInfoPort {
   info(actor: FileActor, workspaceId: string): Promise<Result<unknown>>;
@@ -58,6 +60,8 @@ export interface McpApplicationServices {
   readonly git?: Pick<GitService, 'status' | 'diff' | 'log' | 'run'>;
   readonly process?: Pick<ProcessService, 'start' | 'list' | 'status' | 'logs' | 'stop' | 'previewProjectCommand' | 'startProjectCommand'>;
   readonly codex?: Pick<CodexService, 'status' | 'run' | 'list' | 'taskStatus' | 'taskLogs' | 'stop'>;
+  readonly agentBus?: AgentBusRepository;
+  readonly agentSessions?: Pick<AgentSessionManager, 'bind' | 'heartbeat' | 'disconnect' | 'disconnectSession' | 'listPresence'>;
 }
 
 export interface McpToolAnnotations {
@@ -81,6 +85,7 @@ export interface McpToolContext {
   readonly actor: FileActor;
   readonly services: McpApplicationServices;
   readonly contextEconomy: ContextEconomyRuntime;
+  readonly sessionTransport?: AgentSessionTransport;
 }
 
 export interface ToolConfig<T extends z.ZodType> {

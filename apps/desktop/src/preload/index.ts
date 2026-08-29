@@ -3,12 +3,18 @@ import {
   ipcChannels,
   pushChannels,
   type AddWorkspaceRequest,
+  type AgentSessionSummary,
+  type AgentChatMessage,
+  type AgentChatMessageType,
+  type AgentRoomChatMessage,
   type AgentState,
   type BackupSummary,
   type ClearLogBufferRequest,
   type ClearWorkLogRequest,
   type ConfigureTunnelProfileRequest,
   type DeleteWorkspaceRequest,
+  type CreateAgentSessionRequest,
+  type DisconnectAgentSessionRequest,
   type DashboardSnapshot,
   type DestructiveDeletePolicy,
   type DoctorCheck,
@@ -27,6 +33,8 @@ import {
   type RestoreCheckpointRequest,
   type RestoreRecoveryItemRequest,
   type SaveTunnelApiKeyRequest,
+  type SendAgentMessageRequest,
+  type SendAgentRoomMessageRequest,
   type ScheduleRestoreBackupRequest,
   type SelectWorkspaceRequest,
   type SetWorkspaceArchivedRequest,
@@ -320,7 +328,88 @@ function dashboard(value: unknown): DashboardSnapshot {
     tunnel: tunnelStatus(value.tunnel),
     settings: userSettings(value.settings),
     appVersion: stringField(value, 'appVersion'),
+    agentBus: agentBusDashboard(value.agentBus),
   };
+}
+
+function agentChatMessageType(value: unknown): AgentChatMessageType {
+  if (value === 'TASK' || value === 'UPDATE' || value === 'RESULT' || value === 'BLOCKER' || value === 'QUESTION' || value === 'REVIEW' || value === 'ACK' || value === 'CANCEL') return value;
+  throw new Error('Invalid IPC response');
+}
+
+function agentChatMessage(value: unknown): AgentChatMessage {
+  if (!isRecord(value)) throw new Error('Invalid IPC response');
+  return {
+    sequence: numberField(value, 'sequence'),
+    messageId: stringField(value, 'messageId'),
+    fromAgentId: stringField(value, 'fromAgentId'),
+    toAgentId: stringField(value, 'toAgentId'),
+    taskId: nullableString(value.taskId),
+    type: agentChatMessageType(value.type),
+    body: stringField(value, 'body'),
+    createdAt: numberField(value, 'createdAt'),
+  };
+}
+
+function agentRoomChatMessage(value: unknown): AgentRoomChatMessage {
+  if (!isRecord(value) || !Array.isArray(value.targetAgentIds)) throw new Error('Invalid IPC response');
+  return {
+    sequence: numberField(value, 'sequence'),
+    messageId: stringField(value, 'messageId'),
+    roomId: stringField(value, 'roomId'),
+    fromAgentId: stringField(value, 'fromAgentId'),
+    target: stringField(value, 'target'),
+    targetAgentIds: value.targetAgentIds.map((entry) => {
+      if (typeof entry !== 'string' || entry.trim().length === 0 || entry.length > 128) throw new Error('Invalid IPC response');
+      return entry;
+    }),
+    type: agentChatMessageType(value.type),
+    body: stringField(value, 'body'),
+    createdAt: numberField(value, 'createdAt'),
+    acknowledgedAt: nullableNumberField(value, 'acknowledgedAt'),
+  };
+}
+
+function agentSessionSummary(value: unknown): AgentSessionSummary {
+  if (!isRecord(value)) throw new Error('Invalid IPC response');
+  const status = value.status;
+  if (status !== 'online' && status !== 'busy' && status !== 'idle' && status !== 'blocked' && status !== 'offline') throw new Error('Invalid IPC response');
+  return { agentId: stringField(value, 'agentId'), role: stringField(value, 'role'), sessionId: stringField(value, 'sessionId'), status };
+}
+
+function agentBusDashboard(value: unknown): DashboardSnapshot['agentBus'] {
+  if (!isRecord(value) || !Array.isArray(value.agents) || !Array.isArray(value.tasks) || !Array.isArray(value.messages) || !Array.isArray(value.locks) || !Array.isArray(value.artifacts) || !Array.isArray(value.events)) throw new Error('Invalid IPC response');
+  const agents = value.agents.map((entry) => {
+    if (!isRecord(entry)) throw new Error('Invalid IPC response');
+    const activeToolName = entry.activeToolName === null || entry.activeToolName === undefined ? null : stringField(entry, 'activeToolName');
+    const lastActivityToolName = entry.lastActivityToolName === null || entry.lastActivityToolName === undefined ? null : stringField(entry, 'lastActivityToolName');
+    const lastActivityAt = entry.lastActivityAt === null || entry.lastActivityAt === undefined ? null : stringField(entry, 'lastActivityAt');
+    return { agentId: stringField(entry, 'agentId'), role: stringField(entry, 'role'), sessionId: nullableString(entry.sessionId), status: stringField(entry, 'status'), currentTaskId: nullableString(entry.currentTaskId), ...(activeToolName === null ? {} : { activeToolName }), ...(lastActivityToolName === null ? {} : { lastActivityToolName }), ...(lastActivityAt === null ? {} : { lastActivityAt }), lastHeartbeatAt: numberField(entry, 'lastHeartbeatAt') };
+  });
+  const tasks = value.tasks.map((entry) => {
+    if (!isRecord(entry) || !Array.isArray(entry.dependencies)) throw new Error('Invalid IPC response');
+    return { taskId: stringField(entry, 'taskId'), title: stringField(entry, 'title'), status: stringField(entry, 'status'), ownerAgentId: nullableString(entry.ownerAgentId), dependencies: stringList(entry.dependencies) };
+  });
+  const messages = value.messages.map((entry) => {
+    if (!isRecord(entry)) throw new Error('Invalid IPC response');
+    const messageId = typeof entry.messageId === 'string' && entry.messageId.length > 0 ? entry.messageId : undefined;
+    return { sequence: numberField(entry, 'sequence'), ...(messageId === undefined ? {} : { messageId }), type: stringField(entry, 'type'), fromAgentId: stringField(entry, 'fromAgentId'), toAgentId: stringField(entry, 'toAgentId'), taskId: nullableString(entry.taskId), body: stringField(entry, 'body'), createdAt: numberField(entry, 'createdAt') };
+  });
+  const locks = value.locks.map((entry) => {
+    if (!isRecord(entry)) throw new Error('Invalid IPC response');
+    return { resource: stringField(entry, 'resource'), ownerAgentId: stringField(entry, 'ownerAgentId'), taskId: nullableString(entry.taskId), expiresAt: numberField(entry, 'expiresAt') };
+  });
+  const artifacts = value.artifacts.map((entry) => {
+    if (!isRecord(entry)) throw new Error('Invalid IPC response');
+    return { artifactId: stringField(entry, 'artifactId'), taskId: nullableString(entry.taskId), type: stringField(entry, 'type'), pathOrReference: stringField(entry, 'pathOrReference') };
+  });
+  const events = value.events.map((entry) => {
+    if (!isRecord(entry)) throw new Error('Invalid IPC response');
+    return { sequence: numberField(entry, 'sequence'), eventType: stringField(entry, 'eventType'), agentId: nullableString(entry.agentId), taskId: nullableString(entry.taskId), createdAt: numberField(entry, 'createdAt') };
+  });
+  const roomMessages = Array.isArray(value.roomMessages) ? value.roomMessages.map(agentRoomChatMessage) : [];
+  const room = value.room === null || value.room === undefined ? undefined : value.room as DashboardSnapshot['agentBus']['room'];
+  return { agents, tasks, messages, roomMessages, ...(room === undefined ? {} : { room }), locks, artifacts, events, latestMessageSequence: numberField(value, 'latestMessageSequence'), latestEventSequence: numberField(value, 'latestEventSequence') };
 }
 
 function systemMetrics(value: unknown): SystemMetrics {
@@ -498,6 +587,44 @@ function addWorkspace(request: AddWorkspaceRequest): Promise<WorkspaceSummary> {
     return Promise.reject(new Error('Invalid IPC request'));
   }
   return invoke(ipcChannels.addWorkspace, { rootPath: request.rootPath }).then(workspaceSummary);
+}
+
+function sendAgentMessage(request: SendAgentMessageRequest): Promise<AgentChatMessage> {
+  if (!isRecord(request) || typeof request.fromAgentId !== 'string' || request.fromAgentId.trim().length === 0 || request.fromAgentId.length > 128
+    || typeof request.toAgentId !== 'string' || request.toAgentId.trim().length === 0 || request.toAgentId.length > 128
+    || typeof request.body !== 'string' || request.body.trim().length === 0 || request.body.length > 8_192) {
+    return Promise.reject(new Error('Invalid IPC request'));
+  }
+  const type = agentChatMessageType(request.type);
+  const taskId = request.taskId === undefined ? undefined : request.taskId;
+  if (taskId !== undefined && (typeof taskId !== 'string' || taskId.trim().length === 0 || taskId.length > 128)) return Promise.reject(new Error('Invalid IPC request'));
+  return invoke(ipcChannels.sendAgentMessage, { fromAgentId: request.fromAgentId.trim(), toAgentId: request.toAgentId.trim(), type, body: request.body, ...(taskId === undefined ? {} : { taskId: taskId.trim() }) }).then(agentChatMessage);
+}
+
+function sendAgentRoomMessage(request: SendAgentRoomMessageRequest): Promise<AgentRoomChatMessage> {
+  if (!isRecord(request) || typeof request.target !== 'string' || !/^@[A-Za-z0-9._-]+$/.test(request.target.trim()) || typeof request.body !== 'string' || request.body.trim().length === 0 || request.body.length > 32_768) {
+    return Promise.reject(new Error('Invalid IPC request'));
+  }
+  const type = agentChatMessageType(request.type);
+  return invoke(ipcChannels.sendAgentRoomMessage, { target: request.target.trim(), type, body: request.body }).then(agentRoomChatMessage);
+}
+
+function createAgentSession(request: CreateAgentSessionRequest): Promise<AgentSessionSummary> {
+  if (!isRecord(request) || typeof request.agentId !== 'string' || request.agentId.trim().length === 0 || request.agentId.length > 128
+    || typeof request.role !== 'string' || request.role.trim().length === 0 || request.role.length > 64) {
+    return Promise.reject(new Error('Invalid IPC request'));
+  }
+  return invoke(ipcChannels.createAgentSession, { agentId: request.agentId.trim(), role: request.role.trim() }).then(agentSessionSummary);
+}
+
+function disconnectAgentSession(request: DisconnectAgentSessionRequest): Promise<{ readonly disconnected: boolean }> {
+  if (!isRecord(request) || typeof request.agentId !== 'string' || request.agentId.trim().length === 0 || request.agentId.length > 128) {
+    return Promise.reject(new Error('Invalid IPC request'));
+  }
+  return invoke(ipcChannels.disconnectAgentSession, { agentId: request.agentId.trim() }).then((value: unknown) => {
+    if (!isRecord(value)) throw new Error('Invalid IPC response');
+    return { disconnected: booleanField(value, 'disconnected') };
+  });
 }
 
 function selectWorkspace(request: SelectWorkspaceRequest): Promise<WorkspaceSummary> {
@@ -826,6 +953,10 @@ const api: RvnApi = {
   setWorkspaceArchived,
   deleteWorkspace,
   getDashboard: () => invoke(ipcChannels.getDashboard).then(dashboard),
+  createAgentSession,
+  disconnectAgentSession,
+  sendAgentMessage,
+  sendAgentRoomMessage,
   listMcpServers: () => invoke(ipcChannels.listMcpServers).then(mcpServerList),
   getSystemMetrics: () => invoke(ipcChannels.getSystemMetrics).then(systemMetrics),
   openSelectedWorkspaceFolder,

@@ -432,3 +432,233 @@ export const mcpCallSchema = z.object({
   arguments: z.record(z.string(), z.unknown()).optional(),
   userConfirmed: z.boolean().optional(),
 }).strict();
+
+const agentBusIdSchema = z.string().trim().min(1).max(128);
+const agentBusRoleSchema = z.string().trim().min(1).max(128);
+const agentBusStatusSchema = z.enum(['online', 'busy', 'idle', 'blocked', 'offline']);
+const agentBusTaskStatusSchema = z.enum(['queued', 'assigned', 'running', 'blocked', 'review', 'completed', 'failed', 'cancelled']);
+const agentBusMessageTypeSchema = z.enum(['TASK', 'UPDATE', 'RESULT', 'BLOCKER', 'QUESTION', 'REVIEW', 'ACK', 'CANCEL']);
+const agentBusStringListSchema = z.array(z.string().trim().min(1).max(4_096)).max(100);
+const agentBusMetadataSchema = z.record(z.string().trim().min(1).max(128), z.unknown()).refine((value) => Object.keys(value).length <= 64, 'Too many metadata fields');
+
+export const agentRegisterSchema = z.object({
+  agent_id: agentBusIdSchema,
+  role: agentBusRoleSchema,
+  session_id: agentBusIdSchema.optional(),
+  capabilities: z.array(z.string().trim().min(1).max(256)).max(64).default([]),
+  status: agentBusStatusSchema.optional(),
+}).strict();
+
+export const agentGetSchema = z.object({
+  agent_id: agentBusIdSchema,
+}).strict();
+
+export const agentListSchema = z.object({
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+export const agentHeartbeatSchema = z.object({
+  agent_id: agentBusIdSchema,
+  status: agentBusStatusSchema.optional(),
+  current_task_id: agentBusIdSchema.nullable().optional(),
+}).strict();
+
+export const taskCreateSchema = z.object({
+  agent_id: agentBusIdSchema,
+  title: z.string().trim().min(1).max(256),
+  objective: z.string().trim().min(1).max(8_192),
+  acceptance_criteria: agentBusStringListSchema.default([]),
+  file_scope: agentBusStringListSchema.default([]),
+  dependencies: z.array(agentBusIdSchema).max(100).default([]),
+  priority: z.number().int().min(-100).max(1_000).default(50),
+  read_only: z.boolean().default(false),
+}).strict();
+
+export const taskGetSchema = z.object({
+  task_id: agentBusIdSchema,
+}).strict();
+
+export const taskListSchema = z.object({
+  statuses: z.array(agentBusTaskStatusSchema).max(8).optional(),
+  owner_agent_id: agentBusIdSchema.optional(),
+}).strict();
+
+export const taskClaimSchema = z.object({
+  agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema.optional(),
+}).strict();
+
+export const taskUpdateSchema = z.object({
+  agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema,
+  status: agentBusTaskStatusSchema.optional(),
+  progress: z.string().max(8_192).optional(),
+}).strict().refine((value) => value.status !== undefined || value.progress !== undefined, 'Task update requires status or progress');
+
+export const taskCompleteSchema = z.object({
+  agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema,
+  result: agentBusMetadataSchema.default({}),
+}).strict();
+
+export const messageSendSchema = z.object({
+  from_agent_id: agentBusIdSchema,
+  to_agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema.optional(),
+  type: agentBusMessageTypeSchema,
+  body: z.string().min(1).max(32_768),
+  metadata: agentBusMetadataSchema.optional(),
+}).strict();
+
+export const messageAckSchema = z.object({
+  agent_id: agentBusIdSchema,
+  message_id: agentBusIdSchema.optional(),
+  sequence: z.number().int().min(1).optional(),
+}).strict().refine((value) => (value.message_id === undefined) !== (value.sequence === undefined), 'Message acknowledgement requires exactly one message_id or sequence');
+
+export const messageInboxSchema = z.object({
+  agent_id: agentBusIdSchema,
+  after_sequence: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+export const eventListSchema = z.object({
+  after_sequence: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+  task_id: agentBusIdSchema.optional(),
+  agent_id: agentBusIdSchema.optional(),
+}).strict();
+
+export const busSnapshotSchema = z.object({}).strict();
+
+const roomTargetSchema = z.string().trim().min(2).max(128).regex(/^@[A-Za-z0-9._-]+$/, 'Room target must be an @mention');
+
+export const roomCreateSchema = z.object({
+  room_id: agentBusIdSchema.optional(),
+  name: z.string().trim().min(1).max(128),
+  created_by_agent_id: agentBusIdSchema.optional(),
+  participant_agent_ids: z.array(agentBusIdSchema).max(100).default([]),
+}).strict();
+
+export const roomJoinSchema = z.object({
+  room_id: agentBusIdSchema,
+  agent_id: agentBusIdSchema,
+}).strict();
+
+export const roomLeaveSchema = z.object({
+  room_id: agentBusIdSchema,
+  agent_id: agentBusIdSchema,
+}).strict();
+
+export const roomSendSchema = z.object({
+  room_id: agentBusIdSchema,
+  from_agent_id: agentBusIdSchema.optional(),
+  target: roomTargetSchema.default('@all'),
+  type: agentBusMessageTypeSchema,
+  body: z.string().min(1).max(32_768),
+  metadata: agentBusMetadataSchema.optional(),
+}).strict();
+
+export const roomInboxSchema = z.object({
+  room_id: agentBusIdSchema,
+  agent_id: agentBusIdSchema,
+  after_sequence: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+export const roomHistorySchema = z.object({
+  room_id: agentBusIdSchema,
+  after_sequence: z.number().int().min(0).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+export const roomParticipantsSchema = z.object({
+  room_id: agentBusIdSchema,
+  include_inactive: z.boolean().optional(),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+export const roomSnapshotSchema = z.object({
+  room_id: agentBusIdSchema,
+}).strict();
+
+export const roomAckSchema = z.object({
+  room_id: agentBusIdSchema,
+  agent_id: agentBusIdSchema,
+  message_id: agentBusIdSchema.optional(),
+  sequence: z.number().int().min(1).optional(),
+}).strict().refine((value) => (value.message_id === undefined) !== (value.sequence === undefined), 'Room acknowledgement requires exactly one message_id or sequence');
+
+const agentBusLockTypeSchema = z.enum(['file', 'directory', 'integration', 'runtime']);
+const agentBusResourceSchema = z.string().trim().min(1).max(4_096);
+
+export const lockAcquireSchema = z.object({
+  agent_id: agentBusIdSchema,
+  resource: agentBusResourceSchema,
+  lock_type: agentBusLockTypeSchema,
+  task_id: agentBusIdSchema.optional(),
+  ttl_seconds: z.number().int().min(1).max(86_400).default(1_800),
+}).strict();
+
+export const lockReleaseSchema = z.object({
+  agent_id: agentBusIdSchema,
+  resource: agentBusResourceSchema,
+  force: z.boolean().default(false),
+}).strict();
+
+export const lockListSchema = z.object({
+  agent_id: agentBusIdSchema.optional(),
+  task_id: agentBusIdSchema.optional(),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+const agentBusArtifactTypeSchema = z.enum(['diff', 'test_report', 'runtime_capture', 'screenshot', 'analysis_summary', 'commit', 'patch', 'benchmark']);
+const agentBusReferenceSchema = z.string().trim().min(1).max(4_096);
+
+export const artifactAddSchema = z.object({
+  agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema.optional(),
+  type: agentBusArtifactTypeSchema,
+  path_or_reference: agentBusReferenceSchema,
+  sha256: z.string().trim().max(128).optional(),
+  metadata: agentBusMetadataSchema.optional(),
+}).strict();
+
+export const artifactGetSchema = z.object({
+  artifact_id: agentBusIdSchema,
+}).strict();
+
+export const artifactListSchema = z.object({
+  agent_id: agentBusIdSchema.optional(),
+  task_id: agentBusIdSchema.optional(),
+  type: agentBusArtifactTypeSchema.optional(),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();
+
+const agentBusWorkspaceIdSchema = z.string().trim().min(1).max(256);
+const agentBusWorktreePathSchema = z.string().trim().min(1).max(4_096);
+
+export const worktreeAllocateSchema = z.object({
+  agent_id: agentBusIdSchema,
+  task_id: agentBusIdSchema,
+  workspace_id: agentBusWorkspaceIdSchema,
+  base_ref: z.string().trim().min(1).max(256).default('HEAD'),
+  worktree_path: agentBusWorktreePathSchema.optional(),
+  materialize: z.boolean().default(false),
+  userConfirmed: z.boolean().optional(),
+}).strict();
+
+export const worktreeReleaseSchema = z.object({
+  agent_id: agentBusIdSchema,
+  worktree_id: agentBusIdSchema,
+  materialize: z.boolean().default(false),
+  userConfirmed: z.boolean().optional(),
+}).strict();
+
+export const worktreeListSchema = z.object({
+  workspace_id: agentBusWorkspaceIdSchema.optional(),
+  agent_id: agentBusIdSchema.optional(),
+  task_id: agentBusIdSchema.optional(),
+  include_released: z.boolean().default(false),
+  limit: z.number().int().min(1).max(100).default(50),
+}).strict();

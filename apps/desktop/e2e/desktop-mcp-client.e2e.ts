@@ -74,6 +74,16 @@ test('desktop serves the real MCP client development workflow', async () => {
     );
     await client.connect(new StreamableHTTPClientTransport(endpoint));
     const tools = await client.listTools();
+    const expectedAgentBusTools = [
+      'agent_register', 'agent_get', 'agent_heartbeat', 'agent_list',
+      'task_create', 'task_get', 'task_list', 'task_claim', 'task_update', 'task_complete',
+      'message_send', 'message_inbox', 'message_ack',
+      'event_list', 'bus_snapshot',
+      'room_create', 'room_join', 'room_leave', 'room_send', 'room_inbox', 'room_history', 'room_participants', 'room_snapshot', 'room_ack',
+      'lock_acquire', 'lock_release', 'lock_list',
+      'artifact_add', 'artifact_get', 'artifact_list',
+      'worktree_allocate', 'worktree_release', 'worktree_list',
+    ];
     const expectedCoreTools = [
       'workspace_list', 'workspace_register', 'workspace_info', 'workspace_tree', 'project_snapshot', 'read_file', 'read_files',
       'search_files', 'search_text', 'git_status', 'git_diff', 'git_log', 'git', 'write_file',
@@ -90,12 +100,16 @@ test('desktop serves the real MCP client development workflow', async () => {
       'session_handoff', 'verify_incremental',
     ];
     const advertisedTools = tools.tools.map((tool) => tool.name);
-    expect(advertisedTools).toEqual([
-      ...expectedCoreTools,
-      ...UPGRADE_TOOL_CATALOG.map((entry) => entry.name),
+    const expectedTools = [
+      ...expectedCoreTools.slice(0, 5),
+      ...expectedAgentBusTools,
+      ...expectedCoreTools.slice(5),
+      ...UPGRADE_TOOL_CATALOG.filter((entry) => entry.name !== 'task_create' && entry.name !== 'task_list').map((entry) => entry.name),
       'tool_batch',
-    ]);
-    expect(advertisedTools).toHaveLength(212);
+    ];
+    expect(advertisedTools).toEqual(expectedTools);
+    expect(advertisedTools).toHaveLength(243);
+    expect(new Set(advertisedTools).size).toBe(advertisedTools.length);
     expect(advertisedTools.some((name) => name.startsWith('codex_'))).toBe(false);
 
     if (process.platform === 'win32') {

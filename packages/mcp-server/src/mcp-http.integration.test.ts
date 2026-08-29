@@ -183,6 +183,7 @@ describe('MCP localhost HTTP transport', () => {
       await bothStarted;
 
       expect(activityTracker.listInFlight()).toHaveLength(2);
+      expect(activityTracker.listInFlight().every((call) => call.sessionId !== undefined && call.sessionId.length > 0)).toBe(true);
       expect(activityTracker.revision()).toBe(2);
 
       releaseCalls();

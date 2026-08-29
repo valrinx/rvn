@@ -1,6 +1,9 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import type { DashboardSnapshot, IncidentClassification, LogLine, LogSource, McpServerStatus, UiLocale, WorkspaceSummary } from '@rvn/ipc-contracts';
 import { CheckIcon as Check } from '@phosphor-icons/react/dist/csr/Check';
+import { CheckCircleIcon as CheckCircle } from '@phosphor-icons/react/dist/csr/CheckCircle';
+import { CircleNotchIcon as CircleNotch } from '@phosphor-icons/react/dist/csr/CircleNotch';
+import { InfoIcon as Info } from '@phosphor-icons/react/dist/csr/Info';
 import { PlugsConnectedIcon as PlugsConnected } from '@phosphor-icons/react/dist/csr/PlugsConnected';
 import { WarningCircleIcon as WarningCircle } from '@phosphor-icons/react/dist/csr/WarningCircle';
 import { WarningIcon as Warning } from '@phosphor-icons/react/dist/csr/Warning';
@@ -30,10 +33,60 @@ interface ControlCenterPageProps {
   readonly incidentNotice: string | null;
 }
 
+const EMPTY_AGENT_BUS_DASHBOARD: DashboardSnapshot['agentBus'] = {
+  agents: [],
+  tasks: [],
+  messages: [],
+  locks: [],
+  artifacts: [],
+  events: [],
+  latestMessageSequence: 0,
+  latestEventSequence: 0,
+};
+
+const CORE_AGENT_ROLES = ['main', 'code', 'research', 'test', 'review'] as const;
+type AgentBusAgent = DashboardSnapshot['agentBus']['agents'][number];
+type AgentBusTask = DashboardSnapshot['agentBus']['tasks'][number];
+type MultiAgentMenu = 'edit' | 'view' | 'profiles';
+type AgentProfile = { readonly name?: string; readonly avatarRole?: string };
+type AgentProfiles = Readonly<Record<string, AgentProfile>>;
+const AGENT_PROFILE_STORAGE_KEY = 'rvn-agent-profiles-v1';
+
+export type AgentWorkflowStage = 'offline' | 'waiting' | 'queued' | 'assigned' | 'analyzing' | 'writing' | 'researching' | 'testing' | 'reviewing' | 'working' | 'review' | 'completed' | 'blocked' | 'failed' | 'cancelled';
+
+export interface AgentWorkflowState {
+  readonly stage: AgentWorkflowStage;
+  readonly label: string;
+  readonly taskId: string | null;
+  readonly taskTitle: string | null;
+  readonly lastActivityToolName: string | null;
+  readonly lastActivityAt: string | null;
+}
+
+function readAgentProfiles(): AgentProfiles {
+  try {
+    const raw = window.localStorage.getItem(AGENT_PROFILE_STORAGE_KEY);
+    if (raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as AgentProfiles;
+  } catch {
+    return {};
+  }
+}
+
 export function ControlCenterPage(props: ControlCenterPageProps): ReactElement {
   const t = createTranslator(props.locale);
   const { dashboard } = props;
+  const agentBus = dashboard.agentBus ?? EMPTY_AGENT_BUS_DASHBOARD;
+  const primaryAgents = buildPrimaryAgents(agentBus.agents);
+  const connectedAgents = primaryAgents.filter((agent) => !agent.agentId.endsWith('-offline'));
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState<MultiAgentMenu | null>(null);
+  const [newAgentId, setNewAgentId] = useState('');
+  const [newAgentRole, setNewAgentRole] = useState<(typeof CORE_AGENT_ROLES)[number]>('code');
+  const [sessionEditNotice, setSessionEditNotice] = useState<string | null>(null);
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfiles>(() => readAgentProfiles());
   const [eventLevel, setEventLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all');
   const [eventSource, setEventSource] = useState<'all' | LogSource>('all');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -61,10 +114,50 @@ export function ControlCenterPage(props: ControlCenterPageProps): ReactElement {
   const workspaceScope = dashboard.stdioStrictRoots
     ? `${dashboard.stdioAllowedRoots.length} ${t('security.allowedRoots')}`
     : t('security.machineRoots');
+  const alerts = buildAgentAlerts(agentBus.agents, primaryAgents, agentBus);
+
+  useEffect((): (() => void) => {
+    const refreshTimer = window.setInterval(() => { void props.onRefresh(); }, 2_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [props.onRefresh]);
 
   async function copyText(value: string): Promise<void> {
     await navigator.clipboard.writeText(value);
     setCopyStatus(t('mcp.copied'));
+  }
+
+  async function createSession(): Promise<void> {
+    const agentId = newAgentId.trim();
+    if (agentId.length === 0) {
+      setSessionEditNotice('กรอก agent id ก่อนสร้าง session');
+      return;
+    }
+    try {
+      const created = await window.rvn.createAgentSession({ agentId, role: newAgentRole });
+      setNewAgentId('');
+      setSessionEditNotice(`สร้าง ${created.agentId} แล้ว (${created.sessionId})`);
+      await props.onRefresh();
+    } catch (error) {
+      setSessionEditNotice(error instanceof Error ? error.message : 'สร้าง session ไม่สำเร็จ');
+    }
+  }
+
+  async function disconnectSession(agentId: string): Promise<void> {
+    try {
+      await window.rvn.disconnectAgentSession({ agentId });
+      setSessionEditNotice(`ปิด session ${agentId} แล้ว`);
+      await props.onRefresh();
+    } catch (error) {
+      setSessionEditNotice(error instanceof Error ? error.message : 'ปิด session ไม่สำเร็จ');
+    }
+  }
+
+  function updateAgentProfile(agentId: string, field: 'name' | 'avatarRole', value: string): void {
+    setAgentProfiles((current) => {
+      const next: AgentProfiles = { ...current, [agentId]: { ...current[agentId], [field]: value } };
+      try { window.localStorage.setItem(AGENT_PROFILE_STORAGE_KEY, JSON.stringify(next)); } catch { /* storage is optional */ }
+      return next;
+    });
   }
 
   return (
@@ -189,6 +282,38 @@ export function ControlCenterPage(props: ControlCenterPageProps): ReactElement {
           </div>
         </section>
 
+        <section className="panel rvn-agent-bus-card rvn-multi-agent-panel" aria-label="Agent Work Flow">
+          <div className="rvn-card-header rvn-multi-agent-header">
+            <h2><span className="rvn-card-title-icon mcp" aria-hidden="true">◇</span>Agent Work Flow</h2>
+            <div className="rvn-multi-agent-menu" aria-label="Agent Work Flow menu"><button type="button" onClick={() => setMenuOpen(menuOpen === 'edit' ? null : 'edit')}>Edit</button><button type="button" onClick={() => setMenuOpen(menuOpen === 'view' ? null : 'view')}>View</button><button type="button" onClick={() => setMenuOpen(menuOpen === 'profiles' ? null : 'profiles')}>Profiles</button></div>
+            <span className="rvn-state-pill healthy">{primaryAgents.length} sessions</span>
+          </div>
+          {menuOpen === 'edit' ? <div className="rvn-agent-menu-panel" data-testid="agent-edit-menu"><strong>Edit sessions</strong><span>สร้างหรือปิด session แบบ durable ใน Agent Bus</span><div className="rvn-agent-edit-form"><input aria-label="New agent id" value={newAgentId} onChange={(event) => setNewAgentId(event.target.value)} placeholder="agent id" maxLength={128} /><select aria-label="New agent role" value={newAgentRole} onChange={(event) => setNewAgentRole(event.target.value as (typeof CORE_AGENT_ROLES)[number])}>{CORE_AGENT_ROLES.map((role) => <option value={role} key={role}>{role}</option>)}</select><button type="button" onClick={() => { void createSession(); }}>สร้าง session</button></div><div className="rvn-agent-edit-sessions">{connectedAgents.length === 0 ? <span>ยังไม่มี session ให้ปิด</span> : connectedAgents.map((agent) => <button type="button" key={agent.agentId} onClick={() => { void disconnectSession(agent.agentId); }}>ปิด {formatAgentName(agent.agentId, agent.role)}</button>)}</div>{sessionEditNotice === null ? null : <span className="rvn-session-notice" role="status">{sessionEditNotice}</span>}</div> : null}
+          {menuOpen === 'view' ? <div className="rvn-agent-menu-panel" data-testid="agent-view-menu"><strong>View activity</strong><span>{agentBus.events.length} durable events · {agentBus.tasks.filter((task) => task.status === 'running').length} running tasks</span></div> : null}
+          {menuOpen === 'profiles' ? <div className="rvn-agent-menu-panel" data-testid="agent-profile-menu"><strong>Profiles</strong><span>ตั้งชื่อและ avatar ของ session ได้ เครื่องนี้จะจำค่าไว้</span><div className="rvn-agent-profile-editor">{primaryAgents.map((agent) => { const profile = agentProfiles[agent.agentId] ?? {}; return <div className="rvn-agent-profile-row" key={agent.role}><RoleAvatar role={profile.avatarRole ?? agent.role} /><input data-testid="agent-profile-name" aria-label={`Name for ${agent.role}`} value={profile.name ?? ''} placeholder={formatAgentName(agent.agentId, agent.role)} maxLength={80} onChange={(event) => updateAgentProfile(agent.agentId, 'name', event.target.value)} /><select data-testid="agent-profile-avatar" aria-label={`Avatar for ${agent.role}`} value={profile.avatarRole ?? agent.role} onChange={(event) => updateAgentProfile(agent.agentId, 'avatarRole', event.target.value)}>{CORE_AGENT_ROLES.map((role) => <option value={role} key={role}>{role}</option>)}</select></div>; })}</div></div> : null}
+          <div className="rvn-agent-section-head rvn-session-heading"><h3>SESSIONS</h3><span>{onlineAgentCount(primaryAgents)} online</span></div>
+          <div className="rvn-session-card-grid" data-testid="agent-session-card-grid">
+            {primaryAgents.map((agent) => { const profile = agentProfiles[agent.agentId] ?? {}; const workflow = resolveAgentWorkflowStage(agent, agentBus.tasks, props.locale); return (
+              <article className={`rvn-session-card ${agent.status}`} key={agent.agentId} data-agent-id={agent.agentId}>
+                <div className="rvn-session-card-status"><span className={`rvn-session-dot ${connectionState(agent)}`} aria-label={connectionState(agent)} /></div>
+                <RoleAvatar role={profile.avatarRole ?? agent.role} />
+                <div className="rvn-session-copy">
+                  <strong>{profile.name?.trim() || formatAgentName(agent.agentId, agent.role)}</strong>
+                  <span>{agent.role}</span>
+                  <small>{agent.agentId}</small>
+                  <small className="rvn-session-id" title={agent.sessionId ?? 'No bound protocol session'}>{agent.sessionId ?? 'unbound session'}</small>
+                  <span className={`rvn-workflow-stage ${workflow.stage}`} data-testid="workflow-stage">{workflow.label}</span>
+                  {workflow.taskTitle === null ? null : <small className="rvn-workflow-task" title={workflow.taskTitle}>{workflow.taskTitle}</small>}
+                  {workflow.lastActivityToolName === null ? null : <small className="rvn-workflow-activity" title={workflow.lastActivityAt ?? undefined}>{props.locale === 'th' ? `ล่าสุด: ${workflow.lastActivityToolName}` : `Latest: ${workflow.lastActivityToolName}`}</small>}
+                </div>
+                {isAgentWorking(agent) ? <CircleNotch className="rvn-session-activity" aria-label="working" weight="bold" /> : <span className="rvn-session-activity-placeholder" aria-hidden="true" />}
+              </article>
+            ); })}
+          </div>
+          {alerts.length === 0 ? null : <div className="rvn-agent-alert-stack" data-testid="agent-alert-stack" aria-label="Agent alerts">{alerts.map((alert) => <div className={`rvn-agent-alert ${alert.tone}`} key={alert.text}>{alert.icon}{alert.text}</div>)}</div>}
+          <div className="rvn-agent-bus-resources"><span>LOCKS {agentBus.locks.length}</span><span>ARTIFACTS {agentBus.artifacts.length}</span><span>EVENTS {agentBus.events.length}</span></div>
+        </section>
+
         <section className="panel rvn-events-card">
           <div className="rvn-card-header rvn-events-header">
             <h2>{props.locale === 'th' ? 'เหตุการณ์ล่าสุด' : 'Recent Events'}</h2>
@@ -308,6 +433,107 @@ function formatTunnelTimestamp(timestamp: string | null | undefined, locale: UiL
     timeStyle: 'medium',
     hourCycle: 'h23',
   });
+}
+
+function buildPrimaryAgents(agents: readonly AgentBusAgent[]): readonly AgentBusAgent[] {
+  return CORE_AGENT_ROLES.map((role) => {
+    const candidates = agents.filter((agent) => agent.role.trim().toLowerCase() === role).sort((left, right) => {
+      const leftConnected = connectionState(left) === 'online' ? 1 : 0;
+      const rightConnected = connectionState(right) === 'online' ? 1 : 0;
+      return rightConnected - leftConnected || right.lastHeartbeatAt - left.lastHeartbeatAt || left.agentId.localeCompare(right.agentId);
+    });
+    return candidates[0] ?? { agentId: `${role}-offline`, role, sessionId: null, status: 'offline', currentTaskId: null, lastHeartbeatAt: 0 };
+  });
+}
+
+export function resolveAgentWorkflowStage(
+  agent: Pick<AgentBusAgent, 'role' | 'sessionId' | 'status' | 'currentTaskId'> & { readonly activeToolName?: string | null; readonly lastActivityToolName?: string | null; readonly lastActivityAt?: string | null },
+  tasks: readonly Pick<AgentBusTask, 'taskId' | 'title' | 'status'>[],
+  locale: UiLocale,
+): AgentWorkflowState {
+  const task = agent.currentTaskId === null ? undefined : tasks.find((candidate) => candidate.taskId === agent.currentTaskId);
+  const taskStage: AgentWorkflowStage | undefined = task === undefined ? undefined : isWorkflowStage(task.status) ? task.status : undefined;
+  const activityStage = agent.activeToolName === null || agent.activeToolName === undefined
+    ? undefined
+    : resolveActiveWorkflowStage(agent.role, agent.activeToolName);
+  const stage = agent.sessionId === null || agent.status === 'offline'
+    ? 'offline'
+    : agent.status === 'blocked' || taskStage === 'blocked'
+      ? 'blocked'
+      : activityStage ?? taskStage ?? (agent.currentTaskId === null ? 'waiting' : 'working');
+  return {
+    stage,
+    label: workflowStageLabel(stage, locale),
+    taskId: task?.taskId ?? null,
+    taskTitle: task?.title ?? null,
+    lastActivityToolName: agent.lastActivityToolName ?? null,
+    lastActivityAt: agent.lastActivityAt ?? null,
+  };
+}
+
+function isWorkflowStage(value: string): value is AgentWorkflowStage {
+  return value === 'queued' || value === 'assigned' || value === 'working' || value === 'review' || value === 'completed' || value === 'blocked' || value === 'failed' || value === 'cancelled';
+}
+
+function resolveActiveWorkflowStage(role: string, toolName: string): AgentWorkflowStage {
+  const normalizedRole = role.trim().toLowerCase();
+  const normalizedTool = toolName.trim().toLowerCase();
+  if (normalizedRole === 'main') return 'analyzing';
+  if (normalizedRole === 'code') return /(?:write_file|edit_file|apply_patch|move_file|copy_file|delete_file|restore_)/.test(normalizedTool) ? 'writing' : 'working';
+  if (normalizedRole === 'research') return /(?:search|read|context|workspace|web_fetch|mcp_list)/.test(normalizedTool) ? 'researching' : 'working';
+  if (normalizedRole === 'test') return /(?:test|shell|process|project_|build|lint|typecheck)/.test(normalizedTool) ? 'testing' : 'working';
+  if (normalizedRole === 'review') return /(?:git|diff|read|search|context|workspace|verify|review)/.test(normalizedTool) ? 'reviewing' : 'working';
+  return 'working';
+}
+
+function workflowStageLabel(stage: AgentWorkflowStage, locale: UiLocale): string {
+  if (locale === 'en') {
+    return {
+      offline: 'Offline', waiting: 'Waiting for work', queued: 'Queued', assigned: 'Assigned', analyzing: 'Analyzing', writing: 'Writing', researching: 'Researching', testing: 'Testing', reviewing: 'Reviewing', working: 'Working', review: 'In review', completed: 'Completed', blocked: 'Blocked', failed: 'Failed', cancelled: 'Cancelled',
+    }[stage];
+  }
+  return {
+    offline: 'ออฟไลน์', waiting: 'รอรับงาน', queued: 'อยู่ในคิว', assigned: 'รับงานแล้ว', analyzing: 'กำลังวิเคราะห์', writing: 'กำลังเขียน', researching: 'กำลังค้นคว้า', testing: 'กำลังทดสอบ', reviewing: 'กำลังตรวจทาน', working: 'กำลังทำงาน', review: 'กำลังตรวจทาน', completed: 'เสร็จแล้ว', blocked: 'ติดขัด', failed: 'ล้มเหลว', cancelled: 'ยกเลิก',
+  }[stage];
+}
+
+function connectionState(agent: Pick<AgentBusAgent, 'sessionId' | 'status'>): 'online' | 'offline' {
+  return agent.sessionId !== null && agent.status !== 'offline' && agent.status !== 'blocked' ? 'online' : 'offline';
+}
+
+function isAgentWorking(agent: Pick<AgentBusAgent, 'activeToolName'>): boolean {
+  return agent.activeToolName !== null && agent.activeToolName !== undefined;
+}
+
+function onlineAgentCount(agents: readonly AgentBusAgent[]): number {
+  return agents.filter((agent) => connectionState(agent) === 'online').length;
+}
+
+function buildAgentAlerts(actualAgents: readonly AgentBusAgent[], primaryAgents: readonly AgentBusAgent[], agentBus: DashboardSnapshot['agentBus']): readonly { readonly tone: 'success' | 'info' | 'warning' | 'error'; readonly text: string; readonly icon: ReactElement }[] {
+  const alerts: { readonly tone: 'success' | 'info' | 'warning' | 'error'; readonly text: string; readonly icon: ReactElement }[] = [];
+  const working = primaryAgents.filter(isAgentWorking).length;
+  void actualAgents;
+  if (working === 0) return alerts;
+  if (working > 0) alerts.push({ tone: 'success', text: `${working} session${working === 1 ? '' : 's'} working`, icon: <CheckCircle aria-hidden="true" weight="fill" /> });
+  if (working > 0 && agentBus.messages.length > 0) alerts.push({ tone: 'info', text: `${agentBus.messages.length} coordination messages`, icon: <Info aria-hidden="true" weight="fill" /> });
+  return alerts;
+}
+
+function formatAgentName(agentId: string, role: string): string {
+  const normalizedRole = role.trim().toLowerCase();
+  if (normalizedRole === 'main') return 'Main Agent';
+  if (normalizedRole === 'research') return 'Research Agent';
+  if (normalizedRole === 'code') return 'Code Agent';
+  if (normalizedRole === 'test') return 'Test Agent';
+  if (normalizedRole === 'review') return 'Review Agent';
+  return role.trim().length > 0 ? `${role.trim()} Agent` : agentId;
+}
+
+function RoleAvatar(props: { readonly role: string }): ReactElement {
+  const role = props.role.trim().toLowerCase();
+  const tone = role === 'main' ? 'main' : role === 'code' ? 'code' : role === 'research' ? 'research' : role === 'test' ? 'test' : role === 'review' ? 'review' : 'agent';
+  const asset = tone === 'main' || tone === 'code' || tone === 'research' || tone === 'test' || tone === 'review' ? tone : 'main';
+  return <span className={`rvn-role-avatar ${tone}`} aria-label={`${props.role || 'Agent'} avatar`}><img src={`./avatars/${asset}.png`} alt="" /></span>;
 }
 
 function SecurityRow(props: { readonly label: string; readonly value: string; readonly ok: boolean }): ReactElement {

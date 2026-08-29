@@ -55,8 +55,11 @@ describe('multi-workspace concurrency acceptance', () => {
       expect(transportA.sessionId).not.toBe(transportB.sessionId);
 
       const [toolsA, toolsB] = await Promise.all([clientA.listTools(), clientB.listTools()]);
-      expect(toolsA.tools).toHaveLength(212);
-      expect(toolsB.tools).toHaveLength(212);
+      expect(toolsA.tools).toHaveLength(243);
+      expect(toolsB.tools).toHaveLength(243);
+      expect(toolsA.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+        'agent_register', 'agent_get', 'agent_list', 'agent_heartbeat', 'task_create', 'task_get', 'task_list', 'task_claim', 'task_update', 'task_complete', 'message_send', 'message_inbox', 'message_ack', 'event_list', 'bus_snapshot', 'room_create', 'room_join', 'room_leave', 'room_send', 'room_inbox', 'room_history', 'room_participants', 'room_snapshot', 'room_ack', 'lock_acquire', 'lock_release', 'lock_list', 'artifact_add', 'artifact_get', 'artifact_list', 'worktree_allocate', 'worktree_release', 'worktree_list',
+      ]));
 
       const inactiveWrite = await clientA.callTool({
         name: 'write_file',

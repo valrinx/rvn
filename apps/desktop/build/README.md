@@ -9,6 +9,7 @@ Current Windows packaging uses:
 - `build/icon.ico` for the Windows executable, installer, and uninstaller branding.
 - `build/icon.png` as an application image resource.
 - `signAndEditExecutable: true` so Electron Builder can apply executable metadata/icon editing.
+- The `package:windows` release script overrides this to `false` so GitHub's restricted Windows runner does not require the `winCodeSign` symlink privilege; installer and uninstaller icons remain configured above.
 - x64 NSIS, per-user installation, with a user-selectable installation directory.
 - `deleteAppDataOnUninstall: false`, so uninstalling the application does not automatically delete rvn user data.
 

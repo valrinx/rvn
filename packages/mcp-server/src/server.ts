@@ -41,6 +41,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     ...(options.activity === undefined ? {} : { activity: options.activity }),
     ...(options.activityTracker === undefined ? {} : { activityTracker: options.activityTracker }),
     ...(options.requestScope === undefined ? {} : { sessionId: options.requestScope.sessionId }),
+    ...(options.requestScope?.transport === undefined ? {} : { sessionTransport: options.requestScope.transport }),
     ...(options.profileProvider === undefined ? {} : { profileProvider: options.profileProvider }),
     ...(options.allowAiDeleteProvider === undefined ? {} : { allowAiDeleteProvider: options.allowAiDeleteProvider }),
     ...(options.destructivePolicyProvider === undefined ? {} : { destructivePolicyProvider: options.destructivePolicyProvider }),

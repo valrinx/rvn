@@ -21,7 +21,6 @@ describe('rvn desktop identity', () => {
     expect(builderConfig).toContain('productName: rvn');
     expect(builderConfig).toContain('artifactName: rvn-Setup-${version}.${ext}');
     expect(installerScript).toContain('CreateShortCut "$SMPROGRAMS\\rvn.lnk" "$INSTDIR\\rvn.exe"');
-    expect(installerScript).not.toContain('$SMPROGRAMS\\rvn.lnk');
   });
 
   it('cannot receive releases from the upstream rvn update channel', async () => {
