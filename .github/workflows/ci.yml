@@ -38,7 +38,18 @@ jobs:
 
       - name: Run authoritative verification gate
         shell: powershell
-        run: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/verify-release.ps1
+        run: |
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/verify-release.ps1 *>&1 | Tee-Object -FilePath release-verification.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload release verification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verification-log-${{ github.sha }}
+          path: release-verification.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload verified Windows release artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
