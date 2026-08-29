@@ -56,7 +56,13 @@ jobs:
         shell: powershell
         run: |
           if (Test-Path -LiteralPath release-verification.log) {
-            Get-Content -LiteralPath release-verification.log | Select-Object -Last 25 | ForEach-Object { Write-Host "::error::$($_)" }
+            $diagnosticLines = Get-Content -LiteralPath release-verification.log |
+              Where-Object { $_ -match '==>|Release stage|failed|error|Error|ERROR|Test Files|Tests ' } |
+              Select-Object -Last 40
+            if ($diagnosticLines.Count -eq 0) {
+              $diagnosticLines = Get-Content -LiteralPath release-verification.log | Select-Object -Last 25
+            }
+            $diagnosticLines | ForEach-Object { Write-Host "::error::$($_)" }
           }
 
       - name: Upload verified Windows release artifact
