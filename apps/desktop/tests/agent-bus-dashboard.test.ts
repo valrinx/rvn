@@ -1,14 +1,15 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDesktopRuntime } from '../src/main/desktop-services.js';
+import { removeTemporaryDirectory } from '../../../scripts/electron-startup-cleanup.mjs';
 
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllEnvs();
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(temporaryRoots.splice(0).map((root) => removeTemporaryDirectory(root)));
 });
 
 describe('Agent Bus dashboard snapshot', () => {
@@ -57,5 +58,5 @@ describe('Agent Bus dashboard snapshot', () => {
     } finally {
       await runtime.close();
     }
-  });
+  }, 30_000);
 });

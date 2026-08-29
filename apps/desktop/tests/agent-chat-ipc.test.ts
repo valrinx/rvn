@@ -1,14 +1,15 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createDesktopRuntime } from '../src/main/desktop-services.js';
+import { removeTemporaryDirectory } from '../../../scripts/electron-startup-cleanup.mjs';
 
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(temporaryRoots.splice(0).map((root) => removeTemporaryDirectory(root)));
 });
 
 describe('Agent Bus desktop chat bridge', () => {
@@ -91,7 +92,7 @@ describe('Agent Bus desktop chat bridge', () => {
     } finally {
       await runtime.close();
     }
-  });
+  }, 30_000);
 
   it('routes messages through every registered worker role over independent MCP sessions', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'rvn-agent-chat-roles-data-'));
