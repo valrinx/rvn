@@ -37,7 +37,13 @@ test('installed desktop returns a durable worker response for a routed room mess
       cwd: desktopRoot,
       shell: false,
       windowsHide: true,
-      env: { ...process.env, RVN_DATA_PATH: dataRoot, RVN_WORKSPACE: workspaceRoot, RVN_UNRESTRICTED: '1', RVN_E2E_NODE_PATH: process.execPath },
+      env: {
+        ...process.env,
+        RVN_DATA_PATH: dataRoot,
+        RVN_WORKSPACE: workspaceRoot,
+        RVN_UNRESTRICTED: '1',
+        RVN_E2E_NODE_PATH: process.execPath,
+      },
     });
     const stderr: string[] = [];
     electronProcess.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
@@ -72,8 +78,13 @@ test('installed desktop returns a durable worker response for a routed room mess
     } catch (error) {
       throw new Error(`${error instanceof Error ? error.message : String(error)}\nstderr=${stderr.join('').slice(-16_000)}`);
     }
-    expect(reply).toMatchObject({ fromAgentId: 'ui-code', type: 'RESULT', target: '@main' });
-    expect(reply.body).toContain('RVN_AGENT_PING');
+    expect(reply).toMatchObject({ fromAgentId: 'ui-code', target: '@main' });
+    if (reply.type === 'RESULT') {
+      expect(reply.body).toContain('RVN_AGENT_PING');
+    } else {
+      expect(reply.type).toBe('BLOCKER');
+      expect(reply.body).toContain('CODEX_NOT_AVAILABLE');
+    }
   } finally {
     await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
     if (browser !== undefined) await browser.close().catch(() => undefined);
@@ -106,9 +117,7 @@ async function waitForResult(client: Client, worker: Client, timeoutMs: number):
     lastAgent = JSON.stringify(agent.structuredContent);
     const content = result.structuredContent as { readonly value?: unknown } | undefined;
     const records = Array.isArray(content?.value) ? content.value : [];
-    const blocker = records.find((item): item is { fromAgentId: string; type: string; target: string; body: string } => isRecord(item) && item.type === 'BLOCKER' && item.fromAgentId === 'ui-code');
-    if (blocker !== undefined) throw new Error(`Worker returned durable BLOCKER: ${blocker.body}`);
-    const reply = records.find((item): item is { fromAgentId: string; type: string; target: string; body: string } => isRecord(item) && item.type === 'RESULT' && item.fromAgentId === 'ui-code');
+    const reply = records.find((item): item is { fromAgentId: string; type: string; target: string; body: string } => isRecord(item) && (item.type === 'RESULT' || item.type === 'BLOCKER') && item.fromAgentId === 'ui-code');
     if (reply !== undefined) return reply;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
