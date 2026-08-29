@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import { SqliteDatabase, SqliteSettingsRepository, SqliteWorkspaceRepository } f
 import { permissionProfiles } from '@rvn/permissions';
 import { createStdioMcpRuntime } from './stdio-mcp-runtime.js';
 import { sharedActivityLeaseDirectoryPath } from '@rvn/mcp-server';
+import { removeTemporaryDirectory } from '../../../../scripts/electron-startup-cleanup.mjs';
 
 const temporaryRoots: string[] = [];
 const TEST_CHECKPOINT_KEY = Buffer.alloc(32, 0x46).toString('base64');
@@ -25,7 +26,7 @@ beforeEach(() => {
 afterEach(async () => {
   delete process.env.TUNNEL_CLIENT_PROFILE_DIR;
   delete process.env.RVN_CHECKPOINT_KEY_BASE64;
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(temporaryRoots.splice(0).map((root) => removeTemporaryDirectory(root)));
 });
 
 describe('stdio MCP runtime', () => {
